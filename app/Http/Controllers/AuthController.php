@@ -12,8 +12,8 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $validated = $request->validate([
-            'name' => 'required|string',
-            'email' => 'required|string|email|unique:users',
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
             'role_id' => 'required|integer|exists:roles,id'
         ]);
@@ -22,16 +22,19 @@ class AuthController extends Controller
 
         try {
             $user = User::create($validated);
+            $token = $user->createToken('auth-token')->plainTextToken;
 
             return response()->json([
-                'message' => 'Registration Successful!',
-                'user' => $user
+                'message' => 'Registration successful.',
+                'user' => $user,
+                //'token' => $token,
+                'abilities' => $user->abilities(),
             ], 201);
 
         } catch (\Exception $exception) {
             return response()->json([
-                'Error' => 'Registration failed.',
-                'Message' => $exception->getMessage()
+                'error' => 'Registration failed.',
+                'message' => $exception->getMessage(),
             ], 500);
         }
     }
@@ -43,37 +46,76 @@ class AuthController extends Controller
             'password' => 'required'
         ]);
 
-        try {
-            $user = User::where('email', $validated['email'])->first();
+        $user = User::where('email', $validated['email'])->first();
 
-            if (!$user || !Hash::check($validated['password'], $user->password)) {
-                throw ValidationException::withMessages([
-                    'email' => ['The provided credentials are incorrect.'],
-                ]);
-            }
-
-            $token = $user->createToken('auth-token')->plainTextToken;
-
+        if (!$user || !Hash::check($validated['password'], $user->password)) {
             return response()->json([
-                'message' => 'Login Successful!',
-                'user' => $user,
-                'token' => $token,
-                'abilities' => $user->abilities()
-            ]);
-
-        } catch (\Exception $exception) {
-            return response()->json([
-                'Error' => 'Invalid Credentials.'
-            ], 500);
+                'error' => 'The provided credentials are incorrect.'
+            ], 401);
         }
+
+        $token = $user->createToken('auth-token')->plainTextToken;
+
+        return response()->json([
+            'message' => 'Login successful.',
+            'user' => $user,
+            'token' => $token,
+            'abilities' => $user->abilities(),
+        ]);
     }
 
     public function logout(Request $request)
     {
-        $request->user()->currentAccessToken()->delete();
+        if ($request->user() && $request->user()->currentAccessToken()) {
+            $request->user()->currentAccessToken()->delete();
+        }
 
         return response()->json([
-            'message' => 'Log Out Successful.'
+            'message' => 'Logout successful.'
+        ]);
+    }
+
+    public function getUserById(Request $request, $id)
+    {
+        $user = User::find($id);
+
+        if (! $user) {
+            return response()->json([
+                'error' => 'User not found.'
+            ], 404);
+        }
+
+        return response()->json($user);
+    }
+
+    public function deleteUser(Request $request, $id)
+    {
+        $currentUser = $request->user();
+
+        if (! $currentUser || ! $currentUser->isAdmin()) {
+            return response()->json([
+                'error' => 'Unauthorized. Only administrators can delete users.'
+            ], 403);
+        }
+
+        $user = User::find($id);
+
+        if (! $user) {
+            return response()->json([
+                'error' => 'User not found.'
+            ], 404);
+        }
+
+        if ($user->id === $currentUser->id) {
+            return response()->json([
+                'error' => 'Administrators cannot delete their own account through this endpoint.'
+            ], 400);
+        }
+
+        $user->delete();
+
+        return response()->json([
+            'message' => 'User deleted successfully.'
         ]);
     }
 }

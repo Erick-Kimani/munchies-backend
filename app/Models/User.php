@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, Notifiable;
+    use HasFactory, HasApiTokens, Notifiable;
 
     protected $fillable = [
         'name',
@@ -22,13 +23,10 @@ class User extends Authenticatable
         'remember_token',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-        ];
-    }
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'password' => 'hashed',
+    ];
 
     public function role()
     {
@@ -40,28 +38,22 @@ class User extends Authenticatable
         return $this->role->id === 1;
     }
 
-    public function isUser()
+    public function isSeller()
     {
         return $this->role->id === 2;
     }
 
-    public function isTeacher()
+    public function isUser()
     {
         return $this->role->id === 3;
-    }
-
-    public function isStudent()
-    {
-        return $this->role->id === 4;
     }
 
     public function abilities()
     {
         return [
             'admin' => $this->isAdmin(),
+            'seller' => $this->isSeller(),
             'user' => $this->isUser(),
-            'teacher' => $this->isTeacher(),
-            'student' => $this->isStudent(),
         ];
     }
 }
