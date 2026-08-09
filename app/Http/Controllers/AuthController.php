@@ -22,13 +22,10 @@ class AuthController extends Controller
 
         try {
             $user = User::create($validated);
-            $token = $user->createToken('auth-token')->plainTextToken;
 
             return response()->json([
-                'message' => 'Registration successful.',
+                'message' => 'Registration successful. Please log in.',
                 'user' => $user,
-                //'token' => $token,
-                'abilities' => $user->abilities(),
             ], 201);
 
         } catch (\Exception $exception) {
@@ -54,7 +51,7 @@ class AuthController extends Controller
             ], 401);
         }
 
-        $token = $user->createToken('auth-token')->plainTextToken;
+        $token = $user->createToken('auth-token', ['*'], now()->addDay())->plainTextToken;
 
         return response()->json([
             'message' => 'Login successful.',
