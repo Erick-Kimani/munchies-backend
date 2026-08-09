@@ -8,11 +8,14 @@ use Illuminate\Support\Facades\Route;
 Route::post('register', [AuthController::class, 'register']);
 Route::post('login', [AuthController::class, 'login']);
 
- // Protected Routes
-Route::middleware(['auth:sanctum', \App\Http\Middleware\AdminOnly::class])->group(function () {
+// Protected Routes — any authenticated user
+Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
-    
     Route::get('user', function (Request $request) { return $request->user(); });
+});
+
+// Protected Routes — admin only
+Route::middleware(['auth:sanctum', \App\Http\Middleware\AdminOnly::class])->group(function () {
     Route::get('user/{id}', [AuthController::class, 'getUserById']);
     Route::delete('user/{id}', [AuthController::class, 'deleteUser']);
 
