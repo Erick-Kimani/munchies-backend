@@ -17,13 +17,14 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             RoleSeeder::class,
+            PropertyTypeSeeder::class, // Added the missing property type seeder here
         ]);
 
         User::updateOrCreate(
             ['email' => 'erick@example.com'],
             [
                 'name' => 'Erick Kimani',
-                'password' => bcrypt('Dragon123!'),
+                'password' => bcrypt('Dragon123!'), // Replace with your real secure password
                 'role_id' => 1,
             ]
         );

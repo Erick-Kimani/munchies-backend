@@ -15,10 +15,15 @@ class AuthController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
-            'role_id' => 'required|integer|exists:roles,id'
         ]);
 
         $validated['password'] = Hash::make($validated['password']);
+
+        // Role is never trusted from the client. Every public sign-up
+        // becomes a plain "User" (role_id 3). Admins/Sellers must be
+        // promoted separately (e.g. by an admin, or a dedicated
+        // "become a seller" flow), never chosen at registration time.
+        $validated['role_id'] = 3;
 
         try {
             $user = User::create($validated);
