@@ -4,6 +4,7 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\PropertyTypeController;
 use App\Http\Controllers\PropertySubmissionController;
 use App\Http\Controllers\ContactMessageController;
+use App\Http\Controllers\Api\CountyController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -24,6 +25,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('user', function (Request $request) { return $request->user(); });
     Route::post('property-submissions', [PropertySubmissionController::class, 'store']);
     Route::post('contact-messages', [ContactMessageController::class, 'store']);
+    Route::get('/counties', [CountyController::class, 'index']);
 });
 
 // Protected Routes — admin only
@@ -53,4 +55,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\AdminOnly::class])->grou
     Route::get('contact-messages/{id}', [ContactMessageController::class, 'show']);
     Route::put('contact-messages/{id}/read', [ContactMessageController::class, 'markRead']);
     Route::put('contact-messages/{id}/resolve', [ContactMessageController::class, 'resolve']);
+
+    Route::patch('/counties/{county}/restore', [CountyController::class, 'restore']);
+    Route::patch('/counties/{county}/pull-down', [CountyController::class, 'pullDown']);
 });

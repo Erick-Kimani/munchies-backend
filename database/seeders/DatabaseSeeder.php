@@ -17,7 +17,8 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             RoleSeeder::class,
-            PropertyTypeSeeder::class, // Added the missing property type seeder here
+            PropertyTypeSeeder::class,
+            CountySeeder::class, // Added the missing property type seeder here
         ]);
 
         User::updateOrCreate(
