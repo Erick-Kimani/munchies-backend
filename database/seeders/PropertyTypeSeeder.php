@@ -31,8 +31,8 @@ class PropertyTypeSeeder extends Seeder
         PropertyType::updateOrCreate(
             ['id' => 2],
             [
-                'name' => 'Rent',
-                'slug' => 'rent',
+                'name' => 'Rental',
+                'slug' => 'rental',
                 'description' => 'Properties available for rent.',
                 'is_active' => true,
             ]

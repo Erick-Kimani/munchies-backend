@@ -2,10 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Mail\ContactMessageReplyMail;
 use App\Models\ContactMessage;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Mail;
 
 class ContactMessageController extends Controller
 {
@@ -30,10 +28,28 @@ class ContactMessageController extends Controller
         ], 201);
     }
 
+    // Any authenticated user — their own messages only, each with its full
+    // reply thread. This is what powers Contact.vue's "your messages"
+    // view. Deliberately scoped to auth()->id() so a plain user/seller can
+    // never see anyone else's thread — index()/show() below stay admin-only
+    // for that reason.
+    public function mine(Request $request)
+    {
+        $messages = ContactMessage::with('replies.user:id,name,role_id')
+            ->where('user_id', $request->user()->id)
+            ->latest()
+            ->get();
+
+        return response()->json($messages);
+    }
+
     // Admin only — the single inbox every message lands in.
     public function index(Request $request)
     {
-        $query = ContactMessage::with('sender:id,name,email,role_id')->latest();
+        $query = ContactMessage::with([
+            'sender:id,name,email,role_id',
+            'replies.user:id,name,role_id',
+        ])->latest();
 
         if ($request->filled('status')) {
             $query->where('status', $request->string('status'));
@@ -46,7 +62,10 @@ class ContactMessageController extends Controller
     public function show($id)
     {
         return response()->json(
-            ContactMessage::with('sender:id,name,email,role_id')->findOrFail($id)
+            ContactMessage::with([
+                'sender:id,name,email,role_id',
+                'replies.user:id,name,role_id',
+            ])->findOrFail($id)
         );
     }
 
@@ -86,25 +105,26 @@ class ContactMessageController extends Controller
         ]);
     }
 
-    // Admin only — the "Reply" action. Sends the admin's reply to the
-    // sender's email (the one on their account, never something typed in
-    // by the admin) and records it against the message. Doesn't overwrite
-    // an already-'resolved' status — replying to a resolved thread is just
-    // a follow-up, not a reason to reopen it.
+    // Admin only — the "Reply" action. Appends the admin's reply to the
+    // thread (is_admin = true) rather than emailing anything out — replies
+    // live in-app, the same way the original message did. Doesn't touch an
+    // already-'resolved' status; replying to a resolved thread is just a
+    // follow-up, not a reason to reopen it.
     public function reply(Request $request, $id)
     {
         $validated = $request->validate([
             'reply' => 'required|string|min:2|max:3000',
         ]);
 
-        $message = ContactMessage::with('sender')->findOrFail($id);
+        $message = ContactMessage::findOrFail($id);
 
-        Mail::to($message->sender->email)
-            ->send(new ContactMessageReplyMail($message, $validated['reply']));
+        $message->replies()->create([
+            'user_id' => $request->user()->id,
+            'is_admin' => true,
+            'body' => $validated['reply'],
+        ]);
 
         $message->update([
-            'admin_reply' => $validated['reply'],
-            'replied_at' => now(),
             'handled_by' => $request->user()->id,
             'handled_at' => now(),
             'status' => $message->status === 'resolved' ? 'resolved' : 'replied',
@@ -112,7 +132,7 @@ class ContactMessageController extends Controller
 
         return response()->json([
             'message' => 'Reply sent.',
-            'contact_message' => $message,
+            'contact_message' => $message->load('replies.user:id,name,role_id'),
         ]);
     }
 }

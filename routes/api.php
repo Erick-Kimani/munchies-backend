@@ -25,6 +25,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('user', function (Request $request) { return $request->user(); });
     Route::post('property-submissions', [PropertySubmissionController::class, 'store']);
     Route::post('contact-messages', [ContactMessageController::class, 'store']);
+    // Scoped to the logged-in user's own messages — must stay in this
+    // group (not the admin group below) and must be registered before
+    // contact-messages/{id} so 'mine' doesn't get swallowed as an id.
+    Route::get('contact-messages/mine', [ContactMessageController::class, 'mine']);
     Route::get('/counties', [CountyController::class, 'index']);
 });
 
