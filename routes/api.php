@@ -55,6 +55,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\AdminOnly::class])->grou
     Route::get('contact-messages/{id}', [ContactMessageController::class, 'show']);
     Route::put('contact-messages/{id}/read', [ContactMessageController::class, 'markRead']);
     Route::put('contact-messages/{id}/resolve', [ContactMessageController::class, 'resolve']);
+    Route::put('contact-messages/{id}/reply', [ContactMessageController::class, 'reply']);
 
     Route::patch('/counties/{county}/restore', [CountyController::class, 'restore']);
     Route::patch('/counties/{county}/pull-down', [CountyController::class, 'pullDown']);

@@ -12,6 +12,7 @@ class PropertySubmission extends Model
     protected $fillable = [
         'user_id',
         'type',
+        'listing_type',
         'full_name',
         'email',
         'phone',

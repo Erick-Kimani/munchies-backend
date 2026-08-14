@@ -12,6 +12,10 @@ class PropertySubmissionController extends Controller
     {
         $validated = $request->validate([
             'type' => 'required|string|max:100',
+            // Seller's intent — distinct from `type` above (the property
+            // category). Determines whether this listing surfaces on the
+            // Buy page ('sale') or the Rent page ('rent') once featured.
+            'listing_type' => 'required|in:sale,rent',
             'full_name' => 'required|string|max:255',
             'email' => 'required|email|max:255',
             'phone' => 'required|string|max:30',
@@ -47,6 +51,15 @@ class PropertySubmissionController extends Controller
             ->where('status', 'featured')
             ->latest();
 
+        // listing_type ('sale' | 'rent') is what actually separates the Buy
+        // page from the Rent page. `type` (category) is an optional
+        // additional filter on top of that — the two are independent axes,
+        // never conflated. See Buypage.vue / Rentpage.vue on the frontend.
+        if ($request->filled('listing_type')) {
+            $request->validate(['listing_type' => 'in:sale,rent']);
+            $query->where('listing_type', $request->string('listing_type'));
+        }
+
         if ($request->filled('type')) {
             $query->where('type', $request->string('type'));
         }
@@ -54,13 +67,19 @@ class PropertySubmissionController extends Controller
         return response()->json($query->get());
     }
 
-    // Admin only — list submissions, optionally filtered by status.
+    // Admin only — list submissions, optionally filtered by status and/or
+    // listing_type (sale/rent). Both filters are optional and independent.
     public function index(Request $request)
     {
         $query = PropertySubmission::query()->latest();
 
         if ($request->filled('status')) {
             $query->where('status', $request->string('status'));
+        }
+
+        if ($request->filled('listing_type')) {
+            $request->validate(['listing_type' => 'in:sale,rent']);
+            $query->where('listing_type', $request->string('listing_type'));
         }
 
         return response()->json($query->paginate(20));

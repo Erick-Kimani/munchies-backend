@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\ContactMessageReplyMail;
 use App\Models\ContactMessage;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
 
 class ContactMessageController extends Controller
 {
@@ -80,6 +82,36 @@ class ContactMessageController extends Controller
 
         return response()->json([
             'message' => 'Marked as resolved.',
+            'contact_message' => $message,
+        ]);
+    }
+
+    // Admin only — the "Reply" action. Sends the admin's reply to the
+    // sender's email (the one on their account, never something typed in
+    // by the admin) and records it against the message. Doesn't overwrite
+    // an already-'resolved' status — replying to a resolved thread is just
+    // a follow-up, not a reason to reopen it.
+    public function reply(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'reply' => 'required|string|min:2|max:3000',
+        ]);
+
+        $message = ContactMessage::with('sender')->findOrFail($id);
+
+        Mail::to($message->sender->email)
+            ->send(new ContactMessageReplyMail($message, $validated['reply']));
+
+        $message->update([
+            'admin_reply' => $validated['reply'],
+            'replied_at' => now(),
+            'handled_by' => $request->user()->id,
+            'handled_at' => now(),
+            'status' => $message->status === 'resolved' ? 'resolved' : 'replied',
+        ]);
+
+        return response()->json([
+            'message' => 'Reply sent.',
             'contact_message' => $message,
         ]);
     }

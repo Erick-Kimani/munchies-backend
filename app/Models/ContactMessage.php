@@ -31,4 +31,11 @@ class ContactMessage extends Model
     {
         return $this->belongsTo(User::class, 'handled_by');
     }
+
+    // Every reply in this thread — both the user's follow-ups and the
+    // admin's responses — ordered oldest-first so it reads like a chat.
+    public function replies()
+    {
+        return $this->hasMany(ContactMessageReply::class)->orderBy('created_at');
+    }
 }

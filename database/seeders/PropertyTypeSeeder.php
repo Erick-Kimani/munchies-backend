@@ -23,6 +23,11 @@ class PropertyTypeSeeder extends Seeder
             ]
         );
 
+        // "Rent" here answers "sale or rent?", not "what kind of property is
+        // this?" — that question is now handled by `listing_type` on
+        // property_submissions, not by a fake category in this table. Kept
+        // (not deleted) for any pre-existing data that still references it,
+        // but seeded inactive so it never appears in new dropdowns.
         PropertyType::updateOrCreate(
             ['id' => 2],
             [
