@@ -92,20 +92,26 @@ class PropertySubmissionController extends Controller
     }
 
     // Admin only — "Feature" button. Publishes the submission to Buy/Rent.
+    //
+    // NOTE: status/reviewed_by/reviewed_at/review_note are deliberately
+    // excluded from PropertySubmission::$fillable (see the model) so they
+    // can never be set from a submitter's request payload. That means
+    // mass-assignment helpers (update()/fill()/create()) silently DROP
+    // those keys instead of throwing — so we set them via direct property
+    // assignment + save() here, which bypasses the guard on purpose.
     public function feature(Request $request, $id)
     {
         $submission = PropertySubmission::findOrFail($id);
 
-        $submission->update([
-            'status' => 'featured',
-            'reviewed_by' => $request->user()->id,
-            'reviewed_at' => now(),
-            'review_note' => $request->input('review_note'),
-        ]);
+        $submission->status = 'featured';
+        $submission->reviewed_by = $request->user()->id;
+        $submission->reviewed_at = now();
+        $submission->review_note = $request->input('review_note');
+        $submission->save();
 
         return response()->json([
             'message' => 'Submission featured.',
-            'submission' => $submission,
+            'submission' => $submission->fresh(),
         ]);
     }
 
@@ -115,15 +121,14 @@ class PropertySubmissionController extends Controller
     {
         $submission = PropertySubmission::findOrFail($id);
 
-        $submission->update([
-            'status' => 'pending',
-            'reviewed_by' => $request->user()->id,
-            'reviewed_at' => now(),
-        ]);
+        $submission->status = 'pending';
+        $submission->reviewed_by = $request->user()->id;
+        $submission->reviewed_at = now();
+        $submission->save();
 
         return response()->json([
             'message' => 'Submission moved back to pending.',
-            'submission' => $submission,
+            'submission' => $submission->fresh(),
         ]);
     }
 
@@ -138,16 +143,15 @@ class PropertySubmissionController extends Controller
 
         $submission = PropertySubmission::findOrFail($id);
 
-        $submission->update([
-            'status' => 'rejected',
-            'reviewed_by' => $request->user()->id,
-            'reviewed_at' => now(),
-            'review_note' => $request->input('review_note'),
-        ]);
+        $submission->status = 'rejected';
+        $submission->reviewed_by = $request->user()->id;
+        $submission->reviewed_at = now();
+        $submission->review_note = $request->input('review_note');
+        $submission->save();
 
         return response()->json([
             'message' => 'Submission rejected.',
-            'submission' => $submission,
+            'submission' => $submission->fresh(),
         ]);
     }
 }
