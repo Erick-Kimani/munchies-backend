@@ -33,13 +33,24 @@ class PropertySubmissionController extends Controller
 
         // Behind auth:sanctum this is always the logged-in user — never
         // trusted for status or review fields, only for attribution.
-        $validated['user_id'] = $request->user()->id;
+        $user = $request->user();
+        $validated['user_id'] = $user->id;
 
         $submission = PropertySubmission::create($validated);
+
+        // Submitting a property is what makes someone a Seller. Promote a
+        // plain User (role_id 3) to Seller (role_id 2) the first time they
+        // submit. Deliberately guarded to role_id === 3 only, so this can
+        // never touch an Admin (role_id 1) or re-run on an existing Seller.
+        if ($user->role_id === 3) {
+            $user->role_id = 2;
+            $user->save();
+        }
 
         return response()->json([
             'message' => 'Submission received. Our team will review it shortly.',
             'submission' => $submission,
+            'user' => $user->fresh(),
         ], 201);
     }
 
