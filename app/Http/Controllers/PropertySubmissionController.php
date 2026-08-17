@@ -45,6 +45,12 @@ class PropertySubmissionController extends Controller
 
     // PUBLIC — powers the Buy / Rent pages. Only ever returns featured
     // submissions; pending and rejected ones are never exposed publicly.
+    //
+    // Guests (no valid Sanctum token) get the phone masked and the email
+    // stripped out entirely — not just hidden by the frontend, actually
+    // absent from this response, since a masked value or omitted field
+    // is the only real way to keep it out of the browser's Network tab.
+    // See PropertyEnquiryModal.vue for the matching display logic.
     public function featured(Request $request)
     {
         $query = PropertySubmission::query()
@@ -64,7 +70,40 @@ class PropertySubmissionController extends Controller
             $query->where('type', $request->string('type'));
         }
 
-        return response()->json($query->get());
+        // 'sanctum' explicitly here (rather than auth:sanctum middleware
+        // on the route, which would 401 guests outright) — this route
+        // needs to stay reachable without a token AND still recognise a
+        // valid one when present, so we resolve the guard directly and
+        // treat null as "guest" rather than blocking the request.
+        $isAuthenticated = (bool) $request->user('sanctum');
+
+        $results = $query->get()->map(function (PropertySubmission $submission) use ($isAuthenticated) {
+            $data = $submission->toArray();
+
+            if (!$isAuthenticated) {
+                $data['phone'] = self::maskPhone($submission->phone);
+                unset($data['email']);
+            }
+
+            return $data;
+        });
+
+        return response()->json($results);
+    }
+
+    // Masks all but the leading digits of a phone number, e.g.
+    // "+254791018109" -> "+2547910*****". Used only for guests — see
+    // featured() above.
+    private static function maskPhone(?string $phone): ?string
+    {
+        if (!$phone) {
+            return $phone;
+        }
+
+        $maskedLength = min(5, strlen($phone));
+        $visibleLength = strlen($phone) - $maskedLength;
+
+        return substr($phone, 0, $visibleLength) . str_repeat('*', $maskedLength);
     }
 
     // Admin only — list submissions, optionally filtered by status and/or

@@ -19,6 +19,12 @@ Route::get('getActivePropertyTypes', [PropertyTypeController::class, 'fetchActiv
 // status === 'featured' submissions; pending/rejected stay hidden.
 Route::get('property-listings', [PropertySubmissionController::class, 'featured']);
 
+// Public — powers every LocationDropdown (Home, Categories, Buy, Rent).
+// Was previously in the auth:sanctum group below, which meant it 401'd
+// for anyone not logged in — moved here so guests can load it too. The
+// two mutating routes (restore/pull-down) stay admin-only, further down.
+Route::get('/counties', [CountyController::class, 'index']);
+
 // Protected Routes — any authenticated user
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
@@ -29,7 +35,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // group (not the admin group below) and must be registered before
     // contact-messages/{id} so 'mine' doesn't get swallowed as an id.
     Route::get('contact-messages/mine', [ContactMessageController::class, 'mine']);
-    Route::get('/counties', [CountyController::class, 'index']);
 });
 
 // Protected Routes — admin only
