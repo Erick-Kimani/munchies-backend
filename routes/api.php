@@ -12,6 +12,11 @@ use Illuminate\Support\Facades\Route;
 Route::post('register', [AuthController::class, 'register']);
 Route::post('login', [AuthController::class, 'login']);
 
+// Public — password reset. Both stay unauthenticated by necessity: a user
+// locked out of their account has no Sanctum token to send.
+Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('reset-password', [AuthController::class, 'resetPassword']);
+
 // Public — property types for frontend dropdowns (Land, Rentals, Commercial Buildings, Apartments)
 Route::get('getActivePropertyTypes', [PropertyTypeController::class, 'fetchActivePropertyTypes']);
 

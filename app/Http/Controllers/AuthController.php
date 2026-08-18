@@ -77,6 +77,99 @@ class AuthController extends Controller
         ]);
     }
 
+    /**
+     * Request a password reset code. Always responds the same way whether
+     * or not the email exists, so this endpoint can't be used to check
+     * which emails are registered.
+     */
+    public function forgotPassword(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => 'required|string|email',
+        ]);
+
+        $user = User::where('email', $validated['email'])->first();
+
+        // Don't reveal whether the email exists — same response either way.
+        if (! $user) {
+            return response()->json([
+                'message' => 'If that email is registered, a reset code has been sent.',
+            ]);
+        }
+
+        $resetCode = (string) random_int(100000, 999999);
+
+        \DB::table('password_reset_tokens')->updateOrInsert(
+            ['email' => $user->email],
+            [
+                'token' => Hash::make($resetCode),
+                'created_at' => now(),
+            ]
+        );
+
+        \Mail::send('emails.password-reset', [
+            'user' => $user,
+            'code' => $resetCode,
+        ], function ($message) use ($user) {
+            $message->to($user->email)->subject('Reset Your Password');
+        });
+
+        return response()->json([
+            'message' => 'If that email is registered, a reset code has been sent.',
+        ]);
+    }
+
+    /**
+     * Verify the emailed code and set a new password. Revokes all of the
+     * user's existing Sanctum tokens on success, so a compromised session
+     * doesn't survive a password reset.
+     */
+    public function resetPassword(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => 'required|string|email',
+            'code' => 'required|string|size:6',
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        $resetRecord = \DB::table('password_reset_tokens')
+            ->where('email', $validated['email'])
+            ->first();
+
+        if (! $resetRecord || ! Hash::check($validated['code'], $resetRecord->token)) {
+            return response()->json([
+                'error' => 'Invalid or expired reset code.',
+            ], 422);
+        }
+
+        if (now()->diffInMinutes($resetRecord->created_at) > 30) {
+            \DB::table('password_reset_tokens')->where('email', $validated['email'])->delete();
+
+            return response()->json([
+                'error' => 'Reset code has expired. Please request a new one.',
+            ], 422);
+        }
+
+        $user = User::where('email', $validated['email'])->first();
+
+        if (! $user) {
+            return response()->json([
+                'error' => 'Invalid or expired reset code.',
+            ], 422);
+        }
+
+        $user->update(['password' => Hash::make($validated['password'])]);
+
+        \DB::table('password_reset_tokens')->where('email', $validated['email'])->delete();
+
+        // Password reset should invalidate any existing sessions/tokens.
+        $user->tokens()->delete();
+
+        return response()->json([
+            'message' => 'Password reset successfully. Please log in with your new password.',
+        ]);
+    }
+
     public function getUserById(Request $request, $id)
     {
         $user = User::find($id);
