@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    'google' => [
+        // Must match the frontend's VITE_GOOGLE_CLIENT_ID — we check the
+        // access token's audience against this so a token minted for some
+        // other Google app can't be used to log in here.
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+    ],
+
 ];

@@ -12,6 +12,12 @@ use Illuminate\Support\Facades\Route;
 Route::post('register', [AuthController::class, 'register']);
 Route::post('login', [AuthController::class, 'login']);
 
+// Public — Google sign-in/sign-up. Takes an OAuth access_token obtained
+// client-side (see the frontend's GoogleAuthButton.vue), verifies it
+// directly with Google, and logs the user in — registering them first if
+// this is their first time signing in with this Google account.
+Route::post('auth/google', [AuthController::class, 'googleAuth']);
+
 // Public — password reset. Both stay unauthenticated by necessity: a user
 // locked out of their account has no Sanctum token to send.
 Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
