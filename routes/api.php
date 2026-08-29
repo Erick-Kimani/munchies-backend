@@ -9,43 +9,43 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 // Public Routes
-Route::post('register', [AuthController::class, 'register']);
-Route::post('login', [AuthController::class, 'login']);
+Route::post('register', [AuthController::class, 'register'])->middleware('throttle:auth-sensitive');
+Route::post('login', [AuthController::class, 'login'])->middleware('throttle:login');
 
 // Public — Google sign-in/sign-up. Takes an OAuth access_token obtained
 // client-side (see the frontend's GoogleAuthButton.vue), verifies it
 // directly with Google, and logs the user in — registering them first if
 // this is their first time signing in with this Google account.
-Route::post('auth/google', [AuthController::class, 'googleAuth']);
+Route::post('auth/google', [AuthController::class, 'googleAuth'])->middleware('throttle:auth-sensitive');
 
 // Public — password reset. Both stay unauthenticated by necessity: a user
 // locked out of their account has no Sanctum token to send.
-Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
-Route::post('reset-password', [AuthController::class, 'resetPassword']);
+Route::post('forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:auth-sensitive');
+Route::post('reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:auth-sensitive');
 
 // Public — property types for frontend dropdowns (Land, Rentals, Commercial Buildings, Apartments)
-Route::get('getActivePropertyTypes', [PropertyTypeController::class, 'fetchActivePropertyTypes']);
+Route::get('getActivePropertyTypes', [PropertyTypeController::class, 'fetchActivePropertyTypes'])->middleware('throttle:public-read');
 
 // Public — powers Buypage.vue / Rentpage.vue. Only ever returns
 // status === 'featured' submissions; pending/rejected stay hidden.
-Route::get('property-listings', [PropertySubmissionController::class, 'featured']);
+Route::get('property-listings', [PropertySubmissionController::class, 'featured'])->middleware('throttle:public-read');
 
 // Public — powers every LocationDropdown (Home, Categories, Buy, Rent).
 // Was previously in the auth:sanctum group below, which meant it 401'd
 // for anyone not logged in — moved here so guests can load it too. The
 // two mutating routes (restore/pull-down) stay admin-only, further down.
-Route::get('/counties', [CountyController::class, 'index']);
+Route::get('/counties', [CountyController::class, 'index'])->middleware('throttle:public-read');
 
 // Protected Routes — any authenticated user
 Route::middleware(['auth:sanctum'])->group(function () {
-    Route::post('logout', [AuthController::class, 'logout']);
-    Route::get('user', function (Request $request) { return $request->user(); });
-    Route::post('property-submissions', [PropertySubmissionController::class, 'store']);
-    Route::post('contact-messages', [ContactMessageController::class, 'store']);
+    Route::post('logout', [AuthController::class, 'logout'])->middleware('throttle:authenticated-write');
+    Route::get('user', function (Request $request) { return $request->user(); })->middleware('throttle:authenticated-read');
+    Route::post('property-submissions', [PropertySubmissionController::class, 'store'])->middleware('throttle:authenticated-write');
+    Route::post('contact-messages', [ContactMessageController::class, 'store'])->middleware('throttle:authenticated-write');
     // Scoped to the logged-in user's own messages — must stay in this
     // group (not the admin group below) and must be registered before
     // contact-messages/{id} so 'mine' doesn't get swallowed as an id.
-    Route::get('contact-messages/mine', [ContactMessageController::class, 'mine']);
+    Route::get('contact-messages/mine', [ContactMessageController::class, 'mine'])->middleware('throttle:authenticated-read');
 });
 
 // Protected Routes — admin only

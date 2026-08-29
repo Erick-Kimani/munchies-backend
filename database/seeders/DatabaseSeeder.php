@@ -22,10 +22,10 @@ class DatabaseSeeder extends Seeder
         ]);
 
         User::updateOrCreate(
-            ['email' => 'erick@example.com'],
+            ['email' => 'erick11768kimani@gmail.com'],
             [
                 'name' => 'Erick Kimani',
-                'password' => bcrypt('Dragon123!'), // Replace with your real secure password
+                'password' => bcrypt('erick2022'), // Replace with your real secure password
                 'role_id' => 1,
             ]
         );
