@@ -39,6 +39,11 @@ Route::get('/counties', [CountyController::class, 'index'])->middleware('throttl
 // Protected Routes — any authenticated user
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('logout', [AuthController::class, 'logout'])->middleware('throttle:authenticated-write');
+    // Lets a user who signed up via Google (and so has no password they
+    // actually know) set a real one, so manual email/password login works
+    // for their account too. Requires auth:sanctum — see AuthController::
+    // setPassword for why no reset code is needed here.
+    Route::post('set-password', [AuthController::class, 'setPassword'])->middleware('throttle:authenticated-write');
     Route::get('user', function (Request $request) { return $request->user(); })->middleware('throttle:authenticated-read');
     Route::post('property-submissions', [PropertySubmissionController::class, 'store'])->middleware('throttle:authenticated-write');
     Route::post('contact-messages', [ContactMessageController::class, 'store'])->middleware('throttle:authenticated-write');

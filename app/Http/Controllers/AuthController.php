@@ -167,6 +167,33 @@ class AuthController extends Controller
         ]);
     }
 
+    /**
+     * Lets an already-authenticated user (e.g. one who only ever signed in
+     * via Google and has a random, never-revealed password hash) set a
+     * real password of their own choosing. Because this route sits behind
+     * auth:sanctum, $request->user() is resolved securely from their
+     * token — never from anything the client claims in the request body —
+     * so a user can only ever set a password on their own account.
+     *
+     * No email/reset-code step is needed here, unlike forgotPassword(),
+     * because holding a valid Sanctum token already proves ownership of
+     * the account.
+     */
+    public function setPassword(Request $request)
+    {
+        $validated = $request->validate([
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        $request->user()->update([
+            'password' => Hash::make($validated['password']),
+        ]);
+
+        return response()->json([
+            'message' => 'Password set successfully. You can now log in manually too.',
+        ]);
+    }
+
     public function logout(Request $request)
     {
         if ($request->user() && $request->user()->currentAccessToken()) {
