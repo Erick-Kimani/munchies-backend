@@ -32,6 +32,7 @@ class PropertySubmission extends Model
         'latitude' => 'float',
         'longitude' => 'float',
         'reviewed_at' => 'datetime',
+        'featured_at' => 'datetime',
     ];
 
     protected $appends = ['photo_url'];

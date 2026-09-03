@@ -154,6 +154,10 @@ class PropertySubmissionController extends Controller
         $submission = PropertySubmission::findOrFail($id);
 
         $submission->status = 'featured';
+        // Starts the one-month feature window. UnfeatureExpiredListings
+        // (scheduled hourly, see routes/console.php) automatically pulls
+        // this back to 'pending' one calendar month from this timestamp.
+        $submission->featured_at = now();
         $submission->reviewed_by = $request->user()->id;
         $submission->reviewed_at = now();
         $submission->review_note = $request->input('review_note');
@@ -166,12 +170,15 @@ class PropertySubmissionController extends Controller
     }
 
     // Admin only — "Unfeature" button. Pulls it back off Buy/Rent, back
-    // into the pending queue for re-review.
+    // into the pending queue for re-review. Also invoked automatically
+    // by the UnfeatureExpiredListings scheduled command once a listing's
+    // month is up.
     public function unfeature(Request $request, $id)
     {
         $submission = PropertySubmission::findOrFail($id);
 
         $submission->status = 'pending';
+        $submission->featured_at = null;
         $submission->reviewed_by = $request->user()->id;
         $submission->reviewed_at = now();
         $submission->save();
@@ -194,6 +201,7 @@ class PropertySubmissionController extends Controller
         $submission = PropertySubmission::findOrFail($id);
 
         $submission->status = 'rejected';
+        $submission->featured_at = null;
         $submission->reviewed_by = $request->user()->id;
         $submission->reviewed_at = now();
         $submission->review_note = $request->input('review_note');
