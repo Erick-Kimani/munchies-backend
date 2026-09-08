@@ -21,6 +21,12 @@ class AuthController extends Controller
 
         $validated['password'] = Hash::make($validated['password']);
 
+        // This user is choosing their own password right now, so treat it
+        // the same as having already used /set-password — it keeps that
+        // endpoint's one-time rule meaningful for manually-registered
+        // accounts too, not just ones that started out on Google.
+        $validated['password_set_at'] = now();
+
         // Role is never trusted from the client. Every public sign-up
         // becomes a plain "User" (role_id 3). Admins/Sellers must be
         // promoted separately (e.g. by an admin, or a dedicated
@@ -178,19 +184,65 @@ class AuthController extends Controller
      * No email/reset-code step is needed here, unlike forgotPassword(),
      * because holding a valid Sanctum token already proves ownership of
      * the account.
+     *
+     * This is a ONE-TIME action. Once password_set_at is recorded, this
+     * endpoint refuses further attempts — any future change to the
+     * password is expected to go through forgot-password/reset-password
+     * instead. An admin can grant a single further attempt via
+     * grantSetPasswordAccess() for a user who gets locked out (e.g. lost
+     * access to the email their forgot-password code would go to).
      */
     public function setPassword(Request $request)
     {
+        $user = $request->user();
+
+        if (! $user->can_set_password) {
+            return response()->json([
+                'error' => 'You have already set a password for this account. Use "Forgot password" to change it.',
+            ], 403);
+        }
+
         $validated = $request->validate([
             'password' => 'required|string|min:8|confirmed',
         ]);
 
-        $request->user()->update([
+        $user->update([
             'password' => Hash::make($validated['password']),
+            'password_set_at' => now(),
+            // Consume the override (if any) now that it's been used —
+            // it's single-use even if it was never actually needed.
+            'password_set_override' => false,
         ]);
 
         return response()->json([
             'message' => 'Password set successfully. You can now log in manually too.',
+            'user' => $user->fresh(),
+        ]);
+    }
+
+    /**
+     * Admin-only: grant one specific user a single further attempt at
+     * POST /set-password, even though they've already used it once. Meant
+     * for a user who's locked out of manual login and can't complete the
+     * email-based forgot-password flow either (e.g. no access to that
+     * inbox anymore). The grant is consumed automatically the next time
+     * this user successfully sets a password.
+     */
+    public function grantSetPasswordAccess(Request $request, $id)
+    {
+        $user = User::find($id);
+
+        if (! $user) {
+            return response()->json([
+                'error' => 'User not found.',
+            ], 404);
+        }
+
+        $user->update(['password_set_override' => true]);
+
+        return response()->json([
+            'message' => "{$user->name} can now use the Set password page one more time.",
+            'user' => $user->fresh(),
         ]);
     }
 
@@ -286,7 +338,17 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $user->update(['password' => Hash::make($validated['password'])]);
+        $user->update([
+            'password' => Hash::make($validated['password']),
+            // A Google-only user can reach a real password this way too,
+            // bypassing /set-password entirely (e.g. they still have email
+            // access but not the account's Google login). Record it the
+            // same way, and clear any pending admin override — it was
+            // meant for /set-password specifically and is moot now that
+            // they've already set a password by another route.
+            'password_set_at' => $user->password_set_at ?? now(),
+            'password_set_override' => false,
+        ]);
 
         \DB::table('password_reset_tokens')->where('email', $validated['email'])->delete();
 
@@ -296,6 +358,29 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Password reset successfully. Please log in with your new password.',
         ]);
+    }
+
+    /**
+     * Admin-only: look a user up by email. Exists so an admin handling a
+     * "I'm locked out" support request can find the account's id (needed
+     * by grantSetPasswordAccess) from just the email address they were
+     * given, without a full user-management UI.
+     */
+    public function findUserByEmail(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => 'required|string|email',
+        ]);
+
+        $user = User::where('email', $validated['email'])->first();
+
+        if (! $user) {
+            return response()->json([
+                'error' => 'No user found with that email.',
+            ], 404);
+        }
+
+        return response()->json($user);
     }
 
     public function getUserById(Request $request, $id)

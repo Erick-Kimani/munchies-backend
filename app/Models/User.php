@@ -18,17 +18,41 @@ class User extends Authenticatable
         'role_id',
         'google_id',
         'avatar',
+        'password_set_at',
+        'password_set_override',
     ];
 
     protected $hidden = [
         'password',
         'remember_token',
+        // Internal admin-override flag — the frontend only needs the
+        // derived can_set_password boolean (see below), not this raw flag.
+        'password_set_override',
     ];
 
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
+        'password_set_at' => 'datetime',
+        'password_set_override' => 'boolean',
     ];
+
+    // Included on every serialized User so the frontend can decide whether
+    // to show the "Set password" link / allow the page, without having to
+    // know about password_set_at/password_set_override individually.
+    protected $appends = [
+        'can_set_password',
+    ];
+
+    /**
+     * Whether this account is currently allowed to go through
+     * POST /set-password: either it's never been used before, or an admin
+     * has granted a one-time override after the fact.
+     */
+    public function getCanSetPasswordAttribute(): bool
+    {
+        return is_null($this->password_set_at) || (bool) $this->password_set_override;
+    }
 
     public function role()
     {

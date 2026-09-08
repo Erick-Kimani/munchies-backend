@@ -57,6 +57,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
 Route::middleware(['auth:sanctum', \App\Http\Middleware\AdminOnly::class])->group(function () {
     Route::get('user/{id}', [AuthController::class, 'getUserById']);
     Route::delete('user/{id}', [AuthController::class, 'deleteUser']);
+    // Look up a user by email (plural 'users' prefix, so it can't collide
+    // with the singular 'user/{id}' routes above).
+    Route::get('users/find', [AuthController::class, 'findUserByEmail']);
+    // Grants one locked-out user a single further attempt at
+    // POST /set-password — see AuthController::grantSetPasswordAccess.
+    Route::post('user/{id}/grant-set-password-access', [AuthController::class, 'grantSetPasswordAccess']);
 
     Route::get('getAllRoles', [RoleController::class, 'fetchRoles']);
     Route::post('createRole', [RoleController::class, 'saveRole']);
