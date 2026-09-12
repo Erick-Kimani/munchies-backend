@@ -4,6 +4,7 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\PropertyTypeController;
 use App\Http\Controllers\PropertySubmissionController;
 use App\Http\Controllers\ContactMessageController;
+use App\Http\Controllers\MpesaPaymentController;
 use App\Http\Controllers\Api\CountyController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -36,6 +37,14 @@ Route::get('property-listings', [PropertySubmissionController::class, 'featured'
 // two mutating routes (restore/pull-down) stay admin-only, further down.
 Route::get('/counties', [CountyController::class, 'index'])->middleware('throttle:public-read');
 
+// PUBLIC — Safaricom's own server posts here after the customer responds
+// to (or ignores/times out) an STK Push prompt. Can't require auth:sanctum
+// since Daraja isn't a logged-in browser. See MpesaPaymentController::
+// callback for why this is still safe: it can only update a payment row
+// that was already created by an authenticated initiate() call, and every
+// route that consumes a payment re-checks its status and owning user.
+Route::post('mpesa/callback', [MpesaPaymentController::class, 'callback'])->middleware('throttle:mpesa-callback');
+
 // Protected Routes — any authenticated user
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('logout', [AuthController::class, 'logout'])->middleware('throttle:authenticated-write');
@@ -51,6 +60,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // group (not the admin group below) and must be registered before
     // contact-messages/{id} so 'mine' doesn't get swallowed as an id.
     Route::get('contact-messages/mine', [ContactMessageController::class, 'mine'])->middleware('throttle:authenticated-read');
+
+    // Starts the listing-fee STK Push. See MpesaPaymentController::initiate
+    // — amount always comes from server config, never from this request.
+    Route::post('payments/mpesa/stkpush', [MpesaPaymentController::class, 'initiate'])->middleware('throttle:mpesa-initiate');
+    // Polled by MpesaPaymentModal.vue while the customer completes the
+    // prompt on their phone. Scoped to the caller's own payment.
+    Route::get('payments/mpesa/{checkoutRequestId}/status', [MpesaPaymentController::class, 'status'])->middleware('throttle:authenticated-read');
 });
 
 // Protected Routes — admin only

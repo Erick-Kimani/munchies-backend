@@ -42,4 +42,37 @@ return [
         'client_id' => env('GOOGLE_CLIENT_ID'),
     ],
 
+    // Daraja (Safaricom M-Pesa) — sandbox throughout development. See
+    // App\Services\Mpesa\MpesaClient for how 'env' picks the base URL,
+    // and the README for how to obtain each of these from the Daraja
+    // developer portal.
+    'mpesa' => [
+        // 'sandbox' | 'production'. Only ever 'sandbox' during
+        // development — see README.
+        'env' => env('MPESA_ENV', 'sandbox'),
+
+        'consumer_key' => env('MPESA_CONSUMER_KEY'),
+        'consumer_secret' => env('MPESA_CONSUMER_SECRET'),
+
+        // The Paybill shortcode. In sandbox this is the test paybill
+        // Daraja assigns your app (commonly 174379) — it will not
+        // display "TAWI PROPERTIES" since that name is tied to a real,
+        // Safaricom-registered Paybill. Swap in your own registered
+        // Paybill number here once you move to production.
+        'shortcode' => env('MPESA_SHORTCODE'),
+
+        // The M-Pesa Express passkey for that shortcode, from the
+        // Daraja portal / sandbox simulator.
+        'passkey' => env('MPESA_PASSKEY'),
+
+        // Must be a public HTTPS URL Safaricom's servers can reach —
+        // localhost will never work. Use an ngrok (or similar) tunnel
+        // in development; see README.
+        'callback_url' => env('MPESA_CALLBACK_URL'),
+
+        // Whole-number KES amount charged for submitting a property
+        // listing. Sandbox accepts small amounts (e.g. 1) for testing.
+        'listing_fee' => env('MPESA_LISTING_FEE', 1),
+    ],
+
 ];

@@ -2,15 +2,26 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Payment;
 use App\Models\PropertySubmission;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class PropertySubmissionController extends Controller
 {
     // Requires auth:sanctum — only logged-in users can submit a property.
+    //
+    // A property submission now requires a completed listing-fee payment
+    // first (see MpesaPaymentController::initiate). The frontend runs the
+    // STK Push to completion, then submits the form with the resulting
+    // checkout_request_id. This endpoint re-verifies the payment itself
+    // rather than trusting the frontend's word that payment succeeded —
+    // "report only what the response proves" applies here to our own
+    // payment state just as much as to a Daraja response.
     public function store(Request $request)
     {
         $validated = $request->validate([
+            'checkout_request_id' => 'required|string',
             'type' => 'required|string|max:100',
             // Seller's intent — distinct from `type` above (the property
             // category). Determines whether this listing surfaces on the
@@ -27,16 +38,49 @@ class PropertySubmissionController extends Controller
             'longitude' => 'nullable|numeric|between:-180,180',
         ]);
 
-        if ($request->hasFile('photo')) {
-            $validated['photo_path'] = $request->file('photo')->store('property-submissions', 'public');
-        }
-
-        // Behind auth:sanctum this is always the logged-in user — never
-        // trusted for status or review fields, only for attribution.
         $user = $request->user();
-        $validated['user_id'] = $user->id;
 
-        $submission = PropertySubmission::create($validated);
+        // Wrapped in a transaction with a row lock on the payment: two
+        // concurrent submissions can't both consume the same completed
+        // payment, even if they race each other right after payment
+        // succeeds (e.g. a double form-submit).
+        $submission = DB::transaction(function () use ($validated, $request, $user) {
+            $payment = Payment::where('checkout_request_id', $validated['checkout_request_id'])
+                ->where('user_id', $user->id)
+                ->where('purpose', Payment::PURPOSE_PROPERTY_LISTING_FEE)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$payment) {
+                abort(response()->json(['message' => 'No matching payment was found.'], 402));
+            }
+
+            if (!$payment->isCompleted()) {
+                abort(response()->json(['message' => 'The listing fee payment has not completed yet.'], 402));
+            }
+
+            if ($payment->isConsumed()) {
+                abort(response()->json(['message' => 'This payment has already been used for a submission.'], 402));
+            }
+
+            $submissionData = collect($validated)->except(['checkout_request_id', 'photo'])->all();
+
+            if ($request->hasFile('photo')) {
+                $submissionData['photo_path'] = $request->file('photo')->store('property-submissions', 'public');
+            }
+
+            // Behind auth:sanctum this is always the logged-in user — never
+            // trusted for status or review fields, only for attribution.
+            $submissionData['user_id'] = $user->id;
+            $submissionData['payment_id'] = $payment->id;
+
+            $submission = PropertySubmission::create($submissionData);
+
+            $payment->consumed_at = now();
+            $payment->save();
+
+            return $submission;
+        });
 
         // Submitting a property is what makes someone a Seller. Promote a
         // plain User (role_id 3) to Seller (role_id 2) the first time they

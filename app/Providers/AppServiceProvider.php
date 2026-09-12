@@ -58,5 +58,21 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('public-read', function (Request $request) {
             return Limit::perMinute(30)->by($request->ip());
         });
+
+        // Starting an STK Push is money-adjacent and hits Daraja's own
+        // API on our behalf — kept tighter than an ordinary authenticated
+        // write so a stuck "Pay" button or a scripted retry loop can't
+        // spam Daraja or spam the customer's phone with prompts.
+        RateLimiter::for('mpesa-initiate', function (Request $request) {
+            return Limit::perMinute(5)->by($request->user()?->id ?: $request->ip());
+        });
+
+        // Daraja's own callback. Keyed by IP rather than user (there is
+        // no authenticated user on this route). Generous enough to
+        // tolerate Safaricom's own retries on a slow response, but still
+        // capped since this route is publicly reachable by definition.
+        RateLimiter::for('mpesa-callback', function (Request $request) {
+            return Limit::perMinute(60)->by($request->ip());
+        });
     }
 }
