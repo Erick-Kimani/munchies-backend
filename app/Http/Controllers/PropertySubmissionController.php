@@ -33,7 +33,12 @@ class PropertySubmissionController extends Controller
             'price_range' => 'required|string|max:100',
             'location' => 'required|string|max:255',
             'description' => 'nullable|string|max:2000',
+            // Up to three photos — see PropertySubmission::$fillable /
+            // getPhotoUrlsAttribute for how they're stored and served.
+            // All optional so a listing without photos still submits.
             'photo' => 'nullable|image|max:5120', // 5MB
+            'photo_2' => 'nullable|image|max:5120',
+            'photo_3' => 'nullable|image|max:5120',
             'latitude' => 'nullable|numeric|between:-90,90',
             'longitude' => 'nullable|numeric|between:-180,180',
         ]);
@@ -63,10 +68,20 @@ class PropertySubmissionController extends Controller
                 abort(response()->json(['message' => 'This payment has already been used for a submission.'], 402));
             }
 
-            $submissionData = collect($validated)->except(['checkout_request_id', 'photo'])->all();
+            $submissionData = collect($validated)
+                ->except(['checkout_request_id', 'photo', 'photo_2', 'photo_3'])
+                ->all();
 
             if ($request->hasFile('photo')) {
                 $submissionData['photo_path'] = $request->file('photo')->store('property-submissions', 'public');
+            }
+
+            if ($request->hasFile('photo_2')) {
+                $submissionData['photo_path_2'] = $request->file('photo_2')->store('property-submissions', 'public');
+            }
+
+            if ($request->hasFile('photo_3')) {
+                $submissionData['photo_path_3'] = $request->file('photo_3')->store('property-submissions', 'public');
             }
 
             // Behind auth:sanctum this is always the logged-in user — never

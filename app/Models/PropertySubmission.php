@@ -20,6 +20,8 @@ class PropertySubmission extends Model
         'location',
         'description',
         'photo_path',
+        'photo_path_2',
+        'photo_path_3',
         'latitude',
         'longitude',
     ];
@@ -38,11 +40,35 @@ class PropertySubmission extends Model
         'featured_at' => 'datetime',
     ];
 
-    protected $appends = ['photo_url'];
+    protected $appends = ['photo_url', 'photo_url_2', 'photo_url_3', 'photo_urls'];
 
     public function getPhotoUrlAttribute()
     {
         return $this->photo_path ? asset('storage/' . $this->photo_path) : null;
+    }
+
+    public function getPhotoUrl2Attribute()
+    {
+        return $this->photo_path_2 ? asset('storage/' . $this->photo_path_2) : null;
+    }
+
+    public function getPhotoUrl3Attribute()
+    {
+        return $this->photo_path_3 ? asset('storage/' . $this->photo_path_3) : null;
+    }
+
+    // Convenience array of every photo actually set on this listing (1 to
+    // 3 URLs, in upload order), with any empty slots dropped — this is
+    // what the frontend carousel (PropertyEnquiryModal.vue) consumes
+    // directly instead of stitching photo_url/photo_url_2/photo_url_3
+    // together itself.
+    public function getPhotoUrlsAttribute()
+    {
+        return array_values(array_filter([
+            $this->photo_url,
+            $this->photo_url_2,
+            $this->photo_url_3,
+        ]));
     }
 
     public function submitter()

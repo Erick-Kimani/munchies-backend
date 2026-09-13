@@ -287,11 +287,11 @@ class AuthController extends Controller
             ]
         );
 
-        \Mail::send('emails.password-reset', [
+                \Mail::send('emails.password-reset', [
             'user' => $user,
             'code' => $resetCode,
         ], function ($message) use ($user) {
-            $message->to($user->email)->subject('Reset Your Password');
+            $message->to($user->email)->subject('Reset your Tawi Properties password');
         });
 
         return response()->json([
