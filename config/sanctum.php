@@ -16,11 +16,19 @@ return [
     | authentication cookies. Typically, these should include your local
     | and production domains which access your API via a frontend SPA.
     |
+    | CSRF / HTTPONLY-COOKIE AUTH CHANGE: added localhost:5173 and
+    | 127.0.0.1:5173 — the Vite dev server's default port (see
+    | config/cors.php, which already allowed this origin for CORS, but
+    | Sanctum's stateful-domain check is separate and must list it too).
+    | In production, set SANCTUM_STATEFUL_DOMAINS in .env to your actual
+    | frontend domain(s) instead of relying on this fallback list, e.g.
+    | SANCTUM_STATEFUL_DOMAINS=app.yourdomain.com
+    |
     */
 
     'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', sprintf(
         '%s%s',
-        'localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1',
+        'localhost,localhost:3000,localhost:5173,127.0.0.1,127.0.0.1:3000,127.0.0.1:5173,127.0.0.1:8000,::1',
         Sanctum::currentApplicationUrlWithPort(),
         // Sanctum::currentRequestHost(),
     ))),

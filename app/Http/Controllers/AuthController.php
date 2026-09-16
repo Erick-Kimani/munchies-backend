@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -64,12 +65,24 @@ class AuthController extends Controller
             ], 401);
         }
 
-        $token = $user->createToken('auth-token', ['*'], now()->addDay())->plainTextToken;
+        // CSRF / HTTPONLY-COOKIE AUTH CHANGE: no more createToken()/
+        // plainTextToken. Auth::login() establishes the 'web' session
+        // guard for this user; combined with statefulApi() (see
+        // bootstrap/app.php) that session is what auth:sanctum now
+        // checks first. The session id itself only ever lives in the
+        // httpOnly, encrypted `laravel_session` cookie the browser sets
+        // for us — no token value is ever exposed to JavaScript, so an
+        // XSS payload has nothing to read out of localStorage/sessionStorage
+        // to steal.
+        Auth::login($user);
+
+        // Regenerate the session id on privilege change (login) to
+        // prevent session fixation.
+        $request->session()->regenerate();
 
         return response()->json([
             'message' => 'Login successful.',
             'user' => $user,
-            'token' => $token,
             'abilities' => $user->abilities(),
         ]);
     }
@@ -163,12 +176,15 @@ class AuthController extends Controller
             ]);
         }
 
-        $token = $user->createToken('auth-token', ['*'], now()->addDay())->plainTextToken;
+        // CSRF / HTTPONLY-COOKIE AUTH CHANGE: see login() above for why
+        // this is Auth::login() + session regenerate rather than a
+        // bearer token.
+        Auth::login($user);
+        $request->session()->regenerate();
 
         return response()->json([
             'message' => 'Login successful.',
             'user' => $user,
-            'token' => $token,
             'abilities' => $user->abilities(),
         ]);
     }
@@ -248,9 +264,23 @@ class AuthController extends Controller
 
     public function logout(Request $request)
     {
-        if ($request->user() && $request->user()->currentAccessToken()) {
+        // CSRF / HTTPONLY-COOKIE AUTH CHANGE: the SPA is now authenticated
+        // via the 'web' session guard, not a personal-access-token
+        // Authorization header, so logging out means ending that session
+        // (and rotating the CSRF token) rather than deleting a token row.
+        // currentAccessToken() only exists on genuine bearer-token
+        // requests (e.g. a future non-SPA API client authenticating with
+        // Sanctum::PersonalAccessToken), so it's still cleaned up here in
+        // case one is ever present, but it will normally be null for SPA
+        // requests going forward.
+        if ($request->user() && $request->user()->currentAccessToken() instanceof \Laravel\Sanctum\PersonalAccessToken) {
             $request->user()->currentAccessToken()->delete();
         }
+
+        Auth::guard('web')->logout();
+
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
 
         return response()->json([
             'message' => 'Logout successful.'
