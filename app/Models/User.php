@@ -59,6 +59,11 @@ class User extends Authenticatable
         return $this->belongsTo(Role::class);
     }
 
+    public function termsAcceptances()
+    {
+        return $this->hasMany(\App\Models\TermsAcceptance::class);
+    }
+
     public function isAdmin()
     {
         return $this->role->id === 1;

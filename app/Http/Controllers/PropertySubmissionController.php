@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Payment;
 use App\Models\PropertySubmission;
+use App\Models\TermsAcceptance;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -41,7 +42,20 @@ class PropertySubmissionController extends Controller
             'photo_3' => 'nullable|image|max:5120',
             'latitude' => 'nullable|numeric|between:-90,90',
             'longitude' => 'nullable|numeric|between:-180,180',
+            // A declaration about THIS property — required on every
+            // submission, not just once per account, same as the paid fee
+            // itself. See TermsAcceptance::isCurrentVersion() below: a
+            // stale frontend build sending an outdated version string is
+            // refused rather than silently recorded as consent.
+            'accepted_terms' => 'required|accepted',
+            'accepted_terms_version' => 'required|string|max:40',
         ]);
+
+        if (!TermsAcceptance::isCurrentVersion('seller', $validated['accepted_terms_version'])) {
+            return response()->json([
+                'message' => 'The seller terms have changed since you loaded this page. Please refresh and try again.',
+            ], 409);
+        }
 
         $user = $request->user();
 
@@ -69,7 +83,7 @@ class PropertySubmissionController extends Controller
             }
 
             $submissionData = collect($validated)
-                ->except(['checkout_request_id', 'photo', 'photo_2', 'photo_3'])
+                ->except(['checkout_request_id', 'photo', 'photo_2', 'photo_3', 'accepted_terms', 'accepted_terms_version'])
                 ->all();
 
             if ($request->hasFile('photo')) {
@@ -90,6 +104,19 @@ class PropertySubmissionController extends Controller
             $submissionData['payment_id'] = $payment->id;
 
             $submission = PropertySubmission::create($submissionData);
+
+            // Recorded in the same transaction as the submission itself,
+            // and linked to it — see terms_acceptances.property_submission_id.
+            // A seller declaration should never exist without the listing
+            // it was made about, or vice versa.
+            TermsAcceptance::record(
+                $user->id,
+                'seller',
+                $validated['accepted_terms_version'],
+                TermsAcceptance::CONTEXT_PROPERTY_SUBMISSION,
+                $request,
+                $submission->id
+            );
 
             $payment->consumed_at = now();
             $payment->save();

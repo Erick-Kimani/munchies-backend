@@ -5,6 +5,7 @@ use App\Http\Controllers\PropertyTypeController;
 use App\Http\Controllers\PropertySubmissionController;
 use App\Http\Controllers\ContactMessageController;
 use App\Http\Controllers\MpesaPaymentController;
+use App\Http\Controllers\TermsController;
 use App\Http\Controllers\Api\CountyController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -37,6 +38,12 @@ Route::get('property-listings', [PropertySubmissionController::class, 'featured'
 // two mutating routes (restore/pull-down) stay admin-only, further down.
 Route::get('/counties', [CountyController::class, 'index'])->middleware('throttle:public-read');
 
+// Public — the current version of each terms document. Read by the
+// footer's read-only drawer (no login needed to read the terms) and,
+// optionally, by the frontend at boot to detect a stale build. See
+// config/terms.php.
+Route::get('terms/current', [TermsController::class, 'current'])->middleware('throttle:public-read');
+
 // PUBLIC — Safaricom's own server posts here after the customer responds
 // to (or ignores/times out) an STK Push prompt. Can't require auth:sanctum
 // since Daraja isn't a logged-in browser. See MpesaPaymentController::
@@ -54,6 +61,17 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // setPassword for why no reset code is needed here.
     Route::post('set-password', [AuthController::class, 'setPassword'])->middleware('throttle:authenticated-write');
     Route::get('user', function (Request $request) { return $request->user(); })->middleware('throttle:authenticated-read');
+
+    // What the signed-in user has accepted so far, and a way to record a
+    // fresh standalone acceptance (e.g. a "terms have changed, please
+    // re-accept" prompt). Registration and property submission record
+    // their own acceptances inline — see AuthController::register/
+    // googleAuth and PropertySubmissionController::store — rather than
+    // calling this endpoint, so the acceptance is written in the same
+    // transaction as the thing it authorizes.
+    Route::get('terms/status', [TermsController::class, 'status'])->middleware('throttle:authenticated-read');
+    Route::post('terms/accept', [TermsController::class, 'accept'])->middleware('throttle:authenticated-write');
+
     Route::post('property-submissions', [PropertySubmissionController::class, 'store'])->middleware('throttle:authenticated-write');
     Route::post('contact-messages', [ContactMessageController::class, 'store'])->middleware('throttle:authenticated-write');
     // Scoped to the logged-in user's own messages — must stay in this

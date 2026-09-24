@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\TermsAcceptance;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -18,24 +19,57 @@ class AuthController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
+            // Both required, not just "accepted" — a boolean alone can't
+            // prove *which* wording someone agreed to once the terms
+            // change. See TermsAcceptance::isCurrentVersion(): a stale
+            // frontend build sending an old version string is refused
+            // below the same as an outright missing one, rather than
+            // silently accepted as consent to text nobody currently sees.
+            'accepted_terms' => 'required|accepted',
+            'accepted_terms_version' => 'required|string|max:40',
         ]);
 
-        $validated['password'] = Hash::make($validated['password']);
+        if (!TermsAcceptance::isCurrentVersion('general', $validated['accepted_terms_version'])) {
+            return response()->json([
+                'error' => 'These terms have changed since you loaded this page. Please refresh and try again.',
+            ], 409);
+        }
+
+        $registrationData = collect($validated)
+            ->except(['accepted_terms', 'accepted_terms_version'])
+            ->all();
+
+        $registrationData['password'] = Hash::make($registrationData['password']);
 
         // This user is choosing their own password right now, so treat it
         // the same as having already used /set-password — it keeps that
         // endpoint's one-time rule meaningful for manually-registered
         // accounts too, not just ones that started out on Google.
-        $validated['password_set_at'] = now();
+        $registrationData['password_set_at'] = now();
 
         // Role is never trusted from the client. Every public sign-up
         // becomes a plain "User" (role_id 3). Admins/Sellers must be
         // promoted separately (e.g. by an admin, or a dedicated
         // "become a seller" flow), never chosen at registration time.
-        $validated['role_id'] = 3;
+        $registrationData['role_id'] = 3;
 
         try {
-            $user = User::create($validated);
+            // The account and its terms acceptance are written together —
+            // a user row should never exist without a matching acceptance
+            // row, and vice versa.
+            $user = \Illuminate\Support\Facades\DB::transaction(function () use ($registrationData, $validated, $request) {
+                $user = User::create($registrationData);
+
+                TermsAcceptance::record(
+                    $user->id,
+                    'general',
+                    $validated['accepted_terms_version'],
+                    TermsAcceptance::CONTEXT_REGISTRATION,
+                    $request
+                );
+
+                return $user;
+            });
 
             return response()->json([
                 'message' => 'Registration successful. Please log in.',
@@ -100,6 +134,13 @@ class AuthController extends Controller
     {
         $validated = $request->validate([
             'access_token' => 'required|string',
+            // Only sent by the sign-up page (see GoogleAuthButton.vue) —
+            // absent on an ordinary Google sign-in. Required below only
+            // in the branch that's about to create a brand-new account,
+            // so an existing user signing back in isn't asked to re-agree
+            // to anything.
+            'accepted_terms' => 'nullable|boolean',
+            'accepted_terms_version' => 'nullable|string|max:40',
         ]);
 
         // Ask Google who this token belongs to. A forged or expired token
@@ -163,17 +204,41 @@ class AuthController extends Controller
         }
 
         if (! $user) {
-            $user = User::create([
-                'name' => $googleUser['name'] ?? $googleUser['email'],
-                'email' => $googleUser['email'],
-                // Random, never-revealed hash — this account can only ever
-                // be reached via Google sign-in unless the user later goes
-                // through "forgot password" to set a real one.
-                'password' => Hash::make(Str::random(40)),
-                'role_id' => 3,
-                'google_id' => $googleUser['sub'],
-                'avatar' => $googleUser['picture'] ?? null,
-            ]);
+            // A brand-new account is about to be created via Google —
+            // same rule as the plain register() path: no account without
+            // an acceptance of the current terms.
+            if (
+                empty($validated['accepted_terms'])
+                || !TermsAcceptance::isCurrentVersion('general', $validated['accepted_terms_version'] ?? null)
+            ) {
+                return response()->json([
+                    'error' => 'Please accept the terms to create an account.',
+                ], 422);
+            }
+
+            $user = \Illuminate\Support\Facades\DB::transaction(function () use ($googleUser, $validated, $request) {
+                $newUser = User::create([
+                    'name' => $googleUser['name'] ?? $googleUser['email'],
+                    'email' => $googleUser['email'],
+                    // Random, never-revealed hash — this account can only ever
+                    // be reached via Google sign-in unless the user later goes
+                    // through "forgot password" to set a real one.
+                    'password' => Hash::make(Str::random(40)),
+                    'role_id' => 3,
+                    'google_id' => $googleUser['sub'],
+                    'avatar' => $googleUser['picture'] ?? null,
+                ]);
+
+                TermsAcceptance::record(
+                    $newUser->id,
+                    'general',
+                    $validated['accepted_terms_version'],
+                    TermsAcceptance::CONTEXT_REGISTRATION,
+                    $request
+                );
+
+                return $newUser;
+            });
         }
 
         // CSRF / HTTPONLY-COOKIE AUTH CHANGE: see login() above for why
