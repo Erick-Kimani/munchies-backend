@@ -7,6 +7,7 @@ use App\Models\Payment;
 use App\Services\Mpesa\StkPushService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
@@ -79,38 +80,78 @@ class MpesaPaymentController extends Controller
 
     // PUBLIC — Safaricom posts here once the customer responds to the STK
     // prompt (or it times out). No auth is possible on this route since
-    // Daraja is the caller, not a logged-in browser — see the README note
-    // on why this still can't be used to fabricate a completed payment:
-    // it only ever updates a payment row that already exists, and the
-    // routes that consume a payment always re-check status === completed
-    // and the owning user_id.
+    // Daraja is the caller, not a logged-in browser.
     //
-    // Always responds 200, even when the payment can't be matched — a
-    // non-200 tells Safaricom's side to keep retrying, which wouldn't
-    // change the outcome here.
+    // SECURITY: this endpoint is publicly reachable and unauthenticated —
+    // Daraja doesn't sign or otherwise let us verify the caller. That
+    // means anyone (including the paying customer themselves) can POST an
+    // arbitrary body here with ResultCode = 0, so the body's ResultCode
+    // and CallbackMetadata must NEVER be trusted directly to mark a
+    // payment completed. Previously they were, which let a logged-in user
+    // fake their own "payment succeeded" callback and get a free listing.
+    //
+    // Instead, a callback here is treated purely as a *signal* — "go
+    // check on this CheckoutRequestID" — and the actual outcome always
+    // comes from StkPushService::query(), an authenticated server-to-
+    // server call to Daraja that a caller of this endpoint cannot forge.
+    // CallbackMetadata (the receipt number, transaction date) is only
+    // ever read AFTER that authenticated query has independently
+    // confirmed success — it's cosmetic display data at that point, not
+    // what decided the outcome.
+    //
+    // Always responds 200, even when the payment can't be matched or the
+    // query fails — a non-200 tells Safaricom's side to keep retrying,
+    // which wouldn't change the outcome here; the next status() poll (or
+    // a later retried callback) will pick it up.
     public function callback(Request $request)
     {
         $callback = $request->input('Body.stkCallback', []);
-
         $checkoutRequestId = $callback['CheckoutRequestID'] ?? null;
-        $resultCode = $callback['ResultCode'] ?? null;
-        $resultDesc = $callback['ResultDesc'] ?? '';
 
-        if (!$checkoutRequestId || $resultCode === null) {
-            Log::warning('M-Pesa callback missing expected fields.', ['body' => $request->all()]);
+        if (!$checkoutRequestId) {
+            Log::warning('M-Pesa callback missing CheckoutRequestID.', ['body' => $request->all()]);
             return response()->json(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
         }
 
-        $payment = Payment::where('checkout_request_id', $checkoutRequestId)->first();
+        DB::transaction(function () use ($checkoutRequestId, $callback) {
+            // Locked so a concurrent status()-poll fallback (which also
+            // calls query() + applyResult()) can't race this and apply
+            // the same result twice.
+            $payment = Payment::where('checkout_request_id', $checkoutRequestId)
+                ->lockForUpdate()
+                ->first();
 
-        if (!$payment) {
-            Log::warning('M-Pesa callback for unknown CheckoutRequestID.', ['checkout_request_id' => $checkoutRequestId]);
-            return response()->json(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
-        }
+            if (!$payment) {
+                Log::warning('M-Pesa callback for unknown CheckoutRequestID.', ['checkout_request_id' => $checkoutRequestId]);
+                return;
+            }
 
-        $metadata = $this->flattenCallbackMetadata($callback['CallbackMetadata']['Item'] ?? []);
+            if ($payment->status !== Payment::STATUS_PENDING) {
+                // Already resolved (by an earlier callback, or by the
+                // status()-poll fallback) — nothing left to verify.
+                return;
+            }
 
-        $this->applyResult($payment, (int) $resultCode, (string) $resultDesc, $metadata);
+            try {
+                $result = $this->stkPush->query($payment->checkout_request_id);
+            } catch (MpesaException $e) {
+                // Couldn't verify right now — leave it pending. A retried
+                // callback or the frontend's own status() poll will try
+                // again; nothing here was ever trusted from the request.
+                Log::info('M-Pesa callback triggered a status query that failed; will retry later.', ['error' => $e->getMessage()]);
+                return;
+            }
+
+            if ($result['pending']) {
+                return;
+            }
+
+            $metadata = $result['result_code'] === 0
+                ? $this->flattenCallbackMetadata($callback['CallbackMetadata']['Item'] ?? [])
+                : null;
+
+            $this->applyResult($payment, $result['result_code'], $result['result_desc'], $metadata);
+        });
 
         return response()->json(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
     }
@@ -131,11 +172,9 @@ class MpesaPaymentController extends Controller
 
         // If the callback hasn't arrived yet, ask Daraja directly rather
         // than leaving the frontend to poll a status that may never
-        // change — the assignment brief this project's C++ counterpart
-        // is built from calls out sandbox callbacks as sometimes
-        // unreliable, and the same is true here. Give the callback a
-        // couple of seconds' head start before falling back to this, so
-        // we're not racing it on every poll.
+        // change. Give the callback a couple of seconds' head start
+        // before falling back to this, so we're not racing it on every
+        // poll.
         if ($payment->status === Payment::STATUS_PENDING && $payment->updated_at->diffInSeconds(now()) >= 3) {
             try {
                 $result = $this->stkPush->query($payment->checkout_request_id);

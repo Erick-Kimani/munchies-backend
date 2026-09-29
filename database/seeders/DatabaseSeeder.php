@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
@@ -21,13 +20,13 @@ class DatabaseSeeder extends Seeder
             CountySeeder::class, // Added the missing property type seeder here
         ]);
 
-        User::updateOrCreate(
-            ['email' => 'erick11768kimani@gmail.com'],
-            [
-                'name' => 'Erick Kimani',
-                'password' => bcrypt('erick2022'), // Replace with your real secure password
-                'role_id' => 1,
-            ]
-        );
+        // SECURITY: this used to hard-code an admin email + a plaintext
+        // password directly in source control, and `updateOrCreate` meant
+        // every re-seed silently reset that account back to the
+        // hard-coded password even if it had since been changed. See
+        // AdminUserSeeder for the replacement: it only acts on explicit
+        // ADMIN_EMAIL / ADMIN_PASSWORD environment variables, and never
+        // overwrites an existing password.
+        $this->call(AdminUserSeeder::class);
     }
 }

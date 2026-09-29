@@ -13,6 +13,10 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    // A 6-digit code is only 1,000,000 possibilities — cap guesses at it
+    // independently of its time-based expiry (see resetPassword()).
+    private const MAX_RESET_CODE_ATTEMPTS = 5;
+
     public function register(Request $request)
     {
         $validated = $request->validate([
@@ -378,6 +382,7 @@ class AuthController extends Controller
             ['email' => $user->email],
             [
                 'token' => Hash::make($resetCode),
+                'attempts' => 0,
                 'created_at' => now(),
             ]
         );
@@ -411,17 +416,42 @@ class AuthController extends Controller
             ->where('email', $validated['email'])
             ->first();
 
-        if (! $resetRecord || ! Hash::check($validated['code'], $resetRecord->token)) {
+        if (! $resetRecord) {
             return response()->json([
                 'error' => 'Invalid or expired reset code.',
             ], 422);
         }
 
-        if (now()->diffInMinutes($resetRecord->created_at) > 30) {
+        // Cap guesses at the code itself — a 6-digit code is only
+        // 1,000,000 possibilities, so this must be capped independently of
+        // the time-based expiry below, not instead of it.
+        if ($resetRecord->attempts >= self::MAX_RESET_CODE_ATTEMPTS) {
+            \DB::table('password_reset_tokens')->where('email', $validated['email'])->delete();
+
+            return response()->json([
+                'error' => 'Too many attempts. Please request a new reset code.',
+            ], 422);
+        }
+
+        // NOTE: the `true` here asks for an *absolute* difference. Without
+        // it, Carbon 3's diffInMinutes($date) returns $date - $this (i.e.
+        // negative for a past created_at), so this check would silently
+        // never trigger and reset codes would never expire.
+        if (now()->diffInMinutes($resetRecord->created_at, true) > 30) {
             \DB::table('password_reset_tokens')->where('email', $validated['email'])->delete();
 
             return response()->json([
                 'error' => 'Reset code has expired. Please request a new one.',
+            ], 422);
+        }
+
+        if (! Hash::check($validated['code'], $resetRecord->token)) {
+            \DB::table('password_reset_tokens')
+                ->where('email', $validated['email'])
+                ->increment('attempts');
+
+            return response()->json([
+                'error' => 'Invalid or expired reset code.',
             ], 422);
         }
 
@@ -515,7 +545,28 @@ class AuthController extends Controller
             ], 400);
         }
 
-        $user->delete();
+        // Don't let the last admin be deleted -- there would be no
+        // account left that could undo it or promote a replacement short
+        // of direct database access. Wrapped in a transaction with a row
+        // lock on the admin rows so two concurrent deletions (e.g. two
+        // admins each deleting a different admin at the same moment)
+        // can't both pass this check before either commits and leave
+        // zero admins between them.
+        \Illuminate\Support\Facades\DB::transaction(function () use ($user) {
+            if ((int) $user->role_id === \App\Models\Role::ADMIN) {
+                $adminCount = User::where('role_id', \App\Models\Role::ADMIN)
+                    ->lockForUpdate()
+                    ->count();
+
+                if ($adminCount <= 1) {
+                    abort(response()->json([
+                        'error' => 'Cannot delete the last remaining administrator account.'
+                    ], 400));
+                }
+            }
+
+            $user->delete();
+        });
 
         return response()->json([
             'message' => 'User deleted successfully.'

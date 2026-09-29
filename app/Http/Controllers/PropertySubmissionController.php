@@ -121,17 +121,25 @@ class PropertySubmissionController extends Controller
             $payment->consumed_at = now();
             $payment->save();
 
+            // Submitting a property is what makes someone a Seller.
+            // Promote a plain User (role_id 3) to Seller (role_id 2) the
+            // first time they submit. Deliberately guarded to
+            // role_id === 3 only, so this can never touch an Admin
+            // (role_id 1) or re-run on an existing Seller.
+            //
+            // Moved inside this transaction (it previously ran after
+            // commit): if this update failed on its own, the client got a
+            // 500 even though the payment was already consumed and the
+            // listing already created — an inconsistent state with no
+            // clean way to retry. Now it's all-or-nothing with the rest
+            // of the submission.
+            if ($user->role_id === 3) {
+                $user->role_id = 2;
+                $user->save();
+            }
+
             return $submission;
         });
-
-        // Submitting a property is what makes someone a Seller. Promote a
-        // plain User (role_id 3) to Seller (role_id 2) the first time they
-        // submit. Deliberately guarded to role_id === 3 only, so this can
-        // never touch an Admin (role_id 1) or re-run on an existing Seller.
-        if ($user->role_id === 3) {
-            $user->role_id = 2;
-            $user->save();
-        }
 
         return response()->json([
             'message' => 'Submission received. Our team will review it shortly.',

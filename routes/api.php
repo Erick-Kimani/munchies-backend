@@ -60,7 +60,18 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // for their account too. Requires auth:sanctum — see AuthController::
     // setPassword for why no reset code is needed here.
     Route::post('set-password', [AuthController::class, 'setPassword'])->middleware('throttle:authenticated-write');
-    Route::get('user', function (Request $request) { return $request->user(); })->middleware('throttle:authenticated-read');
+    // Eager-load `role` explicitly. Without this, Eloquent only includes a
+    // relation in the JSON output if it was already loaded on the model —
+    // and nothing upstream of this closure touches $request->user()->role.
+    // (login()/googleAuth() appear to work by accident: they call
+    // $user->abilities(), which happens to lazy-load `role` as a side
+    // effect before the response is serialized. A plain page refresh hits
+    // this route directly, with no such side effect, so user.role.slug
+    // came back undefined client-side and the Admin UI silently vanished
+    // on reload.)
+    Route::get('user', function (Request $request) {
+        return $request->user()->load('role:id,name,slug');
+    })->middleware('throttle:authenticated-read');
 
     // What the signed-in user has accepted so far, and a way to record a
     // fresh standalone acceptance (e.g. a "terms have changed, please

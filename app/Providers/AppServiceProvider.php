@@ -6,6 +6,7 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -22,12 +23,25 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Login — brute-force target. Keyed by IP + email so an attacker
-        // can't dodge the limit just by rotating IPs against one victim
-        // account, and one IP can't hammer many accounts unchecked.
+        // Login — brute-force target. Two limits apply simultaneously:
+        //
+        //   1. Per (IP, email) — stops one IP hammering one account.
+        //   2. Per email alone — stops the same account being hammered
+        //      from many *different* IPs (credential stuffing, botnets).
+        //
+        // The email is lowercased before building either key. Without
+        // that, "A@x.com" and "a@X.com" hashed to different throttle
+        // buckets even though the DB's case-insensitive collation treats
+        // them as the same account in login()'s User::where('email', ...)
+        // lookup — so an attacker could bypass the limit entirely just by
+        // varying the case of the email on each request.
         RateLimiter::for('login', function (Request $request) {
-            return Limit::perMinute(5)
-                ->by($request->ip() . '|' . $request->input('email'));
+            $email = Str::lower((string) $request->input('email'));
+
+            return [
+                Limit::perMinute(5)->by($request->ip() . '|' . $email),
+                Limit::perMinute(10)->by('email:' . $email),
+            ];
         });
 
         // Other unauthenticated auth flows — register, Google sign-in,
