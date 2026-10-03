@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Payment;
 use App\Models\PropertySubmission;
 use App\Models\TermsAcceptance;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -232,7 +233,13 @@ class PropertySubmissionController extends Controller
     // Admin only — view a single submission.
     public function show($id)
     {
-        return response()->json(PropertySubmission::findOrFail($id));
+        try {
+            return response()->json(PropertySubmission::findOrFail($id));
+        } catch (ModelNotFoundException $exception) {
+            return response()->json([
+                'error' => 'Property submission not found.',
+            ], 404);
+        }
     }
 
     // Admin only — "Feature" button. Publishes the submission to Buy/Rent.
@@ -245,7 +252,13 @@ class PropertySubmissionController extends Controller
     // assignment + save() here, which bypasses the guard on purpose.
     public function feature(Request $request, $id)
     {
-        $submission = PropertySubmission::findOrFail($id);
+        try {
+            $submission = PropertySubmission::findOrFail($id);
+        } catch (ModelNotFoundException $exception) {
+            return response()->json([
+                'error' => 'Property submission not found.',
+            ], 404);
+        }
 
         $submission->status = 'featured';
         // Starts the one-month feature window. UnfeatureExpiredListings
@@ -269,7 +282,13 @@ class PropertySubmissionController extends Controller
     // month is up.
     public function unfeature(Request $request, $id)
     {
-        $submission = PropertySubmission::findOrFail($id);
+        try {
+            $submission = PropertySubmission::findOrFail($id);
+        } catch (ModelNotFoundException $exception) {
+            return response()->json([
+                'error' => 'Property submission not found.',
+            ], 404);
+        }
 
         $submission->status = 'pending';
         $submission->featured_at = null;
@@ -292,7 +311,13 @@ class PropertySubmissionController extends Controller
             'review_note' => 'nullable|string|max:1000',
         ]);
 
-        $submission = PropertySubmission::findOrFail($id);
+        try {
+            $submission = PropertySubmission::findOrFail($id);
+        } catch (ModelNotFoundException $exception) {
+            return response()->json([
+                'error' => 'Property submission not found.',
+            ], 404);
+        }
 
         $submission->status = 'rejected';
         $submission->featured_at = null;

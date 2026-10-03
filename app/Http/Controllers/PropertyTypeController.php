@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\PropertyType;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -76,6 +77,10 @@ class PropertyTypeController extends Controller
             $propertyType = PropertyType::findOrFail($id);
             return response()->json($propertyType);
 
+        } catch (ModelNotFoundException $error) {
+            return response()->json([
+                "Error" => "Property type not found.",
+            ], 404);
         } catch (\Exception $error) {
             return response()->json([
                 "Error" => "Failed to fetch property type.",
@@ -107,6 +112,10 @@ class PropertyTypeController extends Controller
 
             return response()->json($propertyType);
 
+        } catch (ModelNotFoundException $error) {
+            return response()->json([
+                "Error" => "Property type not found.",
+            ], 404);
         } catch (\Exception $error) {
             return response()->json([
                 "Error" => "Failed to update property type.",
@@ -124,6 +133,10 @@ class PropertyTypeController extends Controller
 
             return response()->json("Property Type Deleted Successfully");
 
+        } catch (ModelNotFoundException $error) {
+            return response()->json([
+                "Error" => "Property type not found.",
+            ], 404);
         } catch (\Exception $error) {
             return response()->json([
                 "Error" => "Failed to delete property type.",

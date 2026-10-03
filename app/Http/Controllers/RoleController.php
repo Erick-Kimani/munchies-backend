@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Role;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -54,6 +55,10 @@ class RoleController extends Controller
             $role = Role::findOrFail($id);
             return response()->json($role);
 
+        } catch (ModelNotFoundException $error) {
+            return response()->json([
+                "Error" => "Role not found.",
+            ], 404);
         } catch (\Exception $error) {
             return response()->json([
                 "Error" => "Failed to fetch role.",
@@ -106,6 +111,10 @@ class RoleController extends Controller
 
             return response()->json($role);
 
+        } catch (ModelNotFoundException $error) {
+            return response()->json([
+                "Error" => "Role not found.",
+            ], 404);
         } catch (\Exception $error) {
             return response()->json([
                 "Error" => "Failed to update role.",
@@ -134,6 +143,10 @@ class RoleController extends Controller
 
             return response()->json("Role Deleted Successfully");
 
+        } catch (ModelNotFoundException $error) {
+            return response()->json([
+                "Error" => "Role not found.",
+            ], 404);
         } catch (\Exception $error) {
             return response()->json([
                 "Error" => "Failed to delete role.",

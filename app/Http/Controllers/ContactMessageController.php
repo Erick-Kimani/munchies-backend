@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ContactMessage;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 
 class ContactMessageController extends Controller
@@ -61,18 +62,30 @@ class ContactMessageController extends Controller
     // Admin only.
     public function show($id)
     {
-        return response()->json(
-            ContactMessage::with([
-                'sender:id,name,email,role_id',
-                'replies.user:id,name,role_id',
-            ])->findOrFail($id)
-        );
+        try {
+            return response()->json(
+                ContactMessage::with([
+                    'sender:id,name,email,role_id',
+                    'replies.user:id,name,role_id',
+                ])->findOrFail($id)
+            );
+        } catch (ModelNotFoundException $exception) {
+            return response()->json([
+                'error' => 'Contact message not found.',
+            ], 404);
+        }
     }
 
     // Admin only — mark as read without necessarily resolving it yet.
     public function markRead(Request $request, $id)
     {
-        $message = ContactMessage::findOrFail($id);
+        try {
+            $message = ContactMessage::findOrFail($id);
+        } catch (ModelNotFoundException $exception) {
+            return response()->json([
+                'error' => 'Contact message not found.',
+            ], 404);
+        }
 
         if ($message->status === 'new') {
             $message->update([
@@ -91,7 +104,13 @@ class ContactMessageController extends Controller
     // Admin only — mark as fully handled.
     public function resolve(Request $request, $id)
     {
-        $message = ContactMessage::findOrFail($id);
+        try {
+            $message = ContactMessage::findOrFail($id);
+        } catch (ModelNotFoundException $exception) {
+            return response()->json([
+                'error' => 'Contact message not found.',
+            ], 404);
+        }
 
         $message->update([
             'status' => 'resolved',
@@ -116,7 +135,13 @@ class ContactMessageController extends Controller
             'reply' => 'required|string|min:2|max:3000',
         ]);
 
-        $message = ContactMessage::findOrFail($id);
+        try {
+            $message = ContactMessage::findOrFail($id);
+        } catch (ModelNotFoundException $exception) {
+            return response()->json([
+                'error' => 'Contact message not found.',
+            ], 404);
+        }
 
         $message->replies()->create([
             'user_id' => $request->user()->id,
