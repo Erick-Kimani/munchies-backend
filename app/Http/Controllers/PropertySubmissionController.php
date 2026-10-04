@@ -11,6 +11,30 @@ use Illuminate\Support\Facades\DB;
 
 class PropertySubmissionController extends Controller
 {
+    // Requires auth:sanctum — a seller's own listings, with their edit
+    // request history and slots-remaining attached. This is the one place
+    // a non-admin can see property_submissions rows at all (index/show
+    // below are admin-only), so it's scoped hard to user_id -- a seller
+    // can only ever see their own.
+    public function mine(Request $request)
+    {
+        $submissions = PropertySubmission::where('user_id', $request->user()->id)
+            ->with(['editRequests']) // keeps getEditRequestsRemainingAttribute() query-free per row
+            ->latest()
+            ->get();
+
+        $submissions->each(function (PropertySubmission $submission) {
+            // Manually attaching these (rather than relying on $appends)
+            // is deliberate -- see the comment on
+            // getEditRequestsRemainingAttribute() in the model for why
+            // it's not auto-appended everywhere.
+            $submission->edit_requests_remaining = $submission->edit_requests_remaining;
+            $submission->has_pending_edit_request = $submission->hasPendingEditRequest();
+        });
+
+        return response()->json($submissions);
+    }
+
     // Requires auth:sanctum — only logged-in users can submit a property.
     //
     // A property submission now requires a completed listing-fee payment

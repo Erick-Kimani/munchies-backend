@@ -3,6 +3,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\PropertyTypeController;
 use App\Http\Controllers\PropertySubmissionController;
+use App\Http\Controllers\PropertyEditRequestController;
 use App\Http\Controllers\ContactMessageController;
 use App\Http\Controllers\MpesaPaymentController;
 use App\Http\Controllers\TermsController;
@@ -84,6 +85,17 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('terms/accept', [TermsController::class, 'accept'])->middleware('throttle:authenticated-write');
 
     Route::post('property-submissions', [PropertySubmissionController::class, 'store'])->middleware('throttle:authenticated-write');
+    // A seller's own submissions, with edit-request status attached (see
+    // PropertySubmissionController::mine). Must be registered before any
+    // property-submissions/{id} pattern so 'mine' isn't swallowed as an
+    // id -- there isn't one in this group today, but keeping the same
+    // ordering discipline as contact-messages/mine below.
+    Route::get('property-submissions/mine', [PropertySubmissionController::class, 'mine'])->middleware('throttle:authenticated-read');
+    // A seller requesting a change to one of their own listings (not
+    // applied until an admin approves it — see
+    // PropertyEditRequestController::store/approve). Capped at 2 requests
+    // per listing, enforced in the controller.
+    Route::post('property-submissions/{id}/edit-requests', [PropertyEditRequestController::class, 'store'])->middleware('throttle:authenticated-write');
     Route::post('contact-messages', [ContactMessageController::class, 'store'])->middleware('throttle:authenticated-write');
     // Scoped to the logged-in user's own messages — must stay in this
     // group (not the admin group below) and must be registered before
@@ -126,6 +138,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\AdminOnly::class])->grou
     Route::put('property-submissions/{id}/feature', [PropertySubmissionController::class, 'feature']);
     Route::put('property-submissions/{id}/unfeature', [PropertySubmissionController::class, 'unfeature']);
     Route::put('property-submissions/{id}/reject', [PropertySubmissionController::class, 'reject']);
+
+    // Edit-request review queue — see PropertyEditRequestController.
+    Route::get('edit-requests', [PropertyEditRequestController::class, 'index']);
+    Route::put('edit-requests/{id}/approve', [PropertyEditRequestController::class, 'approve']);
+    Route::put('edit-requests/{id}/reject', [PropertyEditRequestController::class, 'reject']);
 
     Route::get('contact-messages', [ContactMessageController::class, 'index']);
     Route::get('contact-messages/{id}', [ContactMessageController::class, 'show']);

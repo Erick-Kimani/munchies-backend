@@ -85,4 +85,38 @@ class PropertySubmission extends Model
     {
         return $this->belongsTo(Payment::class);
     }
+
+    public function editRequests()
+    {
+        return $this->hasMany(PropertyEditRequest::class)->latest();
+    }
+
+    // How many of this listing's 2 total edit-request slots are still
+    // free. Counts every request regardless of status (pending, approved,
+    // AND rejected all count) -- see PropertyEditRequest::MAX_PER_SUBMISSION.
+    //
+    // Deliberately NOT in $appends: this runs a COUNT query, and
+    // PropertySubmissionController::index() (the admin listing) can
+    // return many rows at once -- auto-appending here would be an N+1 on
+    // every admin page load. Call explicitly (e.g. via loadCount(
+    // 'editRequests') + this accessor) only where it's actually needed:
+    // PropertySubmissionController::mine() and
+    // PropertyEditRequestController.
+    public function getEditRequestsRemainingAttribute(): int
+    {
+        $used = $this->relationLoaded('editRequests')
+            ? $this->editRequests->count()
+            : $this->editRequests()->count();
+
+        return max(0, PropertyEditRequest::MAX_PER_SUBMISSION - $used);
+    }
+
+    public function hasPendingEditRequest(): bool
+    {
+        $requests = $this->relationLoaded('editRequests')
+            ? $this->editRequests
+            : $this->editRequests()->get();
+
+        return $requests->contains(fn ($r) => $r->status === PropertyEditRequest::STATUS_PENDING);
+    }
 }
