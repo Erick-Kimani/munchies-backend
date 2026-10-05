@@ -120,13 +120,6 @@ class PropertyEditRequestController extends Controller
     // fields it proposed (and no others) onto the live listing. Wrapped
     // in a locked transaction so this can't race a concurrent
     // approve/reject of the same request (e.g. two admin tabs open).
-
-
-
-
-
-
-
     public function approve(Request $request, $id)
     {
         $validated = $request->validate([
@@ -134,7 +127,7 @@ class PropertyEditRequestController extends Controller
         ]);
 
         try {
-            $result = DB::transaction(function () use ($id, $validated) {
+            $result = DB::transaction(function () use ($id, $validated, $request) {
                 $editRequest = PropertyEditRequest::with('submission')
                     ->lockForUpdate()
                     ->findOrFail($id);
@@ -152,12 +145,17 @@ class PropertyEditRequestController extends Controller
                 }
                 $submission->save();
 
-                $editRequest->update([
-                    'status' => PropertyEditRequest::STATUS_APPROVED,
-                    'admin_note' => $validated['admin_note'] ?? null,
-                    'reviewed_by' => $request->user()->id,
-                    'reviewed_at' => now(),
-                ]);
+                // Direct property assignment + save() — NOT ->update().
+                // status/admin_note/reviewed_by/reviewed_at are
+                // deliberately excluded from PropertyEditRequest::
+                // $fillable (so a seller can never set them via their own
+                // request body), which means ->update() would silently
+                // drop every one of these keys instead of setting them.
+                $editRequest->status = PropertyEditRequest::STATUS_APPROVED;
+                $editRequest->admin_note = $validated['admin_note'] ?? null;
+                $editRequest->reviewed_by = $request->user()->id;
+                $editRequest->reviewed_at = now();
+                $editRequest->save();
 
                 return [$editRequest->fresh(), $submission->fresh()];
             });
@@ -173,9 +171,6 @@ class PropertyEditRequestController extends Controller
             'submission' => $submission,
         ]);
     }
-
-
-    
 
     // Admin only — rejects a pending edit request. The listing itself is
     // never touched; only the request's own status changes. admin_note is
@@ -198,12 +193,13 @@ class PropertyEditRequestController extends Controller
             return response()->json(['error' => 'This edit request has already been reviewed.'], 422);
         }
 
-        $editRequest->update([
-            'status' => PropertyEditRequest::STATUS_REJECTED,
-            'admin_note' => $validated['admin_note'],
-            'reviewed_by' => $request->user()->id,
-            'reviewed_at' => now(),
-        ]);
+        // Same reasoning as approve() above — direct assignment, not
+        // ->update(), for the same guarded fields.
+        $editRequest->status = PropertyEditRequest::STATUS_REJECTED;
+        $editRequest->admin_note = $validated['admin_note'];
+        $editRequest->reviewed_by = $request->user()->id;
+        $editRequest->reviewed_at = now();
+        $editRequest->save();
 
         return response()->json([
             'message' => 'Edit request rejected.',

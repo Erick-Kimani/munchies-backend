@@ -33,14 +33,14 @@ return [
         // Everyone with an account: buyers, tenants, browsers.
         // Accepted once, at registration.
         'general' => [
-            'version' => '2026-09-16',
+            'version' => '2026-10-05',
             'label' => 'Buyer & Tenant Terms',
         ],
 
         // Anyone publishing a property. Accepted per listing, because the
         // declaration is about that specific property.
         'seller' => [
-            'version' => '2026-09-16',
+            'version' => '2026-10-05',
             'label' => 'Seller Terms',
         ],
 

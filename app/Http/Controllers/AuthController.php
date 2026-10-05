@@ -17,6 +17,12 @@ class AuthController extends Controller
     // independently of its time-based expiry (see resetPassword()).
     private const MAX_RESET_CODE_ATTEMPTS = 5;
 
+    private function hasAcceptedCurrentTerms(array $validated, string $audience): bool
+    {
+        return filter_var($validated['accepted_terms'] ?? false, FILTER_VALIDATE_BOOLEAN)
+            && TermsAcceptance::isCurrentVersion($audience, $validated['accepted_terms_version'] ?? null);
+    }
+
     public function register(Request $request)
     {
         $validated = $request->validate([
@@ -33,10 +39,14 @@ class AuthController extends Controller
             'accepted_terms_version' => 'required|string|max:40',
         ]);
 
-        if (!TermsAcceptance::isCurrentVersion('general', $validated['accepted_terms_version'])) {
+        if (!$this->hasAcceptedCurrentTerms($validated, 'general')) {
+            $message = filter_var($validated['accepted_terms'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                ? 'These terms have changed since you loaded this page. Please refresh and try again.'
+                : 'Please accept the terms to create an account.';
+
             return response()->json([
-                'error' => 'These terms have changed since you loaded this page. Please refresh and try again.',
-            ], 409);
+                'error' => $message,
+            ], filter_var($validated['accepted_terms'] ?? false, FILTER_VALIDATE_BOOLEAN) ? 409 : 422);
         }
 
         $registrationData = collect($validated)
@@ -211,13 +221,14 @@ class AuthController extends Controller
             // A brand-new account is about to be created via Google —
             // same rule as the plain register() path: no account without
             // an acceptance of the current terms.
-            if (
-                empty($validated['accepted_terms'])
-                || !TermsAcceptance::isCurrentVersion('general', $validated['accepted_terms_version'] ?? null)
-            ) {
+            if (!$this->hasAcceptedCurrentTerms($validated, 'general')) {
+                $message = filter_var($validated['accepted_terms'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                    ? 'These terms have changed since you loaded this page. Please refresh and try again.'
+                    : 'Please accept the terms to create an account.';
+
                 return response()->json([
-                    'error' => 'Please accept the terms to create an account.',
-                ], 422);
+                    'error' => $message,
+                ], filter_var($validated['accepted_terms'] ?? false, FILTER_VALIDATE_BOOLEAN) ? 409 : 422);
             }
 
             $user = \Illuminate\Support\Facades\DB::transaction(function () use ($googleUser, $validated, $request) {
