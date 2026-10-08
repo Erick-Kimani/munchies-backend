@@ -7,9 +7,13 @@ use App\Models\PropertySubmission;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class PropertyEditRequestController extends Controller
 {
+    // Ceiling on admin-granted extra slots per listing.
+    private const MAX_EXTRA_GRANTED = 10;
+
     // Admin only — the review queue. Defaults to pending (what the admin
     // actually needs to act on); ?status=approved|rejected|all for a
     // historical view. Eager-loads just enough of the submission and
@@ -65,7 +69,7 @@ class PropertyEditRequestController extends Controller
             // "email us with a substantive reason" prompt instead of a
             // generic error message.
             return response()->json([
-                'error' => 'You have used both of your edit requests for this listing.',
+                'error' => 'You have used all of your edit requests for this listing.',
                 'slots_exhausted' => true,
             ], 422);
         }
@@ -79,6 +83,11 @@ class PropertyEditRequestController extends Controller
             'latitude' => 'nullable|numeric|between:-90,90|required_with:longitude',
             'longitude' => 'nullable|numeric|between:-180,180|required_with:latitude',
             'phone' => 'nullable|string|max:30',
+            // Replacement photos, same rules as the original submission.
+            // Sent as multipart; each one replaces the matching slot.
+            'photo' => 'nullable|image|max:5120',
+            'photo_2' => 'nullable|image|max:5120',
+            'photo_3' => 'nullable|image|max:5120',
             // Required on every request — gives the admin context to
             // judge it by, and reuses the same field name/UI the
             // slots-exhausted "email us" fallback asks for, so a seller
@@ -89,10 +98,20 @@ class PropertyEditRequestController extends Controller
         $changedFields = collect(['type', 'description', 'latitude', 'longitude', 'phone'])
             ->filter(fn ($field) => array_key_exists($field, $validated) && $validated[$field] !== null);
 
-        if ($changedFields->isEmpty()) {
+        $photoInputs = ['photo' => 'photo_path', 'photo_2' => 'photo_path_2', 'photo_3' => 'photo_path_3'];
+        $uploadedInputs = collect($photoInputs)->filter(fn ($column, $input) => $request->hasFile($input));
+
+        if ($changedFields->isEmpty() && $uploadedInputs->isEmpty()) {
             return response()->json([
-                'error' => 'Please change at least one field (property type, description, map position, or phone).',
+                'error' => 'Please change at least one field (property type, description, map position, phone, or photos).',
             ], 422);
+        }
+
+        // Stored only after every check above has passed, so a rejected
+        // request never leaves orphaned files behind.
+        $photoPaths = [];
+        foreach ($uploadedInputs as $input => $column) {
+            $photoPaths[$column] = $request->file($input)->store('property-edit-requests', 'public');
         }
 
         $editRequest = PropertyEditRequest::create([
@@ -103,16 +122,18 @@ class PropertyEditRequestController extends Controller
             'latitude' => $validated['latitude'] ?? null,
             'longitude' => $validated['longitude'] ?? null,
             'phone' => $validated['phone'] ?? null,
+            'photo_path' => $photoPaths['photo_path'] ?? null,
+            'photo_path_2' => $photoPaths['photo_path_2'] ?? null,
+            'photo_path_3' => $photoPaths['photo_path_3'] ?? null,
             'seller_note' => $validated['seller_note'],
         ]);
 
         return response()->json([
             'message' => 'Edit request submitted. An admin will review it shortly.',
             'edit_request' => $editRequest,
-            'edit_requests_remaining' => max(
-                0,
-                PropertyEditRequest::MAX_PER_SUBMISSION - $submission->editRequests->count() - 1
-            ),
+            // $submission->editRequests was loaded before this request was
+            // created, so remaining is still the pre-create figure.
+            'edit_requests_remaining' => max(0, $submission->edit_requests_remaining - 1),
         ], 201);
     }
 
@@ -140,10 +161,21 @@ class PropertyEditRequestController extends Controller
 
                 $submission = $editRequest->submission;
 
+                // Photos being replaced: remember the old files so they
+                // can be deleted once the new ones are safely saved.
+                $replacedPhotos = [];
+
                 foreach ($editRequest->changedFields() as $field) {
+                    if (in_array($field, PropertyEditRequest::PHOTO_COLUMNS, true) && $submission->{$field}) {
+                        $replacedPhotos[] = $submission->{$field};
+                    }
                     $submission->{$field} = $editRequest->{$field};
                 }
                 $submission->save();
+
+                foreach ($replacedPhotos as $oldPath) {
+                    Storage::disk('public')->delete($oldPath);
+                }
 
                 // Direct property assignment + save() — NOT ->update().
                 // status/admin_note/reviewed_by/reviewed_at are
@@ -201,9 +233,62 @@ class PropertyEditRequestController extends Controller
         $editRequest->reviewed_at = now();
         $editRequest->save();
 
+        // The proposed photos were never used, so remove them from disk.
+        foreach (PropertyEditRequest::PHOTO_COLUMNS as $column) {
+            if ($editRequest->{$column}) {
+                Storage::disk('public')->delete($editRequest->{$column});
+            }
+        }
+
         return response()->json([
             'message' => 'Edit request rejected.',
             'edit_request' => $editRequest->fresh(),
+        ]);
+    }
+
+    // Admin only — grants one listing extra edit-request slots on top of
+    // the standard cap, for a seller who's used theirs up but has a
+    // genuine reason to change something again. Additive (count defaults
+    // to 1) and bounded by MAX_EXTRA_GRANTED so it can't be run away.
+    public function grantExtra(Request $request, $submissionId)
+    {
+        $validated = $request->validate([
+            'count' => 'nullable|integer|min:1|max:5',
+        ]);
+        $count = (int) ($validated['count'] ?? 1);
+
+        $submission = PropertySubmission::find($submissionId);
+
+        if (! $submission) {
+            return response()->json(['error' => 'Property submission not found.'], 404);
+        }
+
+        $granted = DB::transaction(function () use ($submission, $count) {
+            $locked = PropertySubmission::whereKey($submission->id)->lockForUpdate()->first();
+
+            if ($locked->extra_edit_requests + $count > self::MAX_EXTRA_GRANTED) {
+                return null;
+            }
+
+            $locked->increment('extra_edit_requests', $count);
+
+            return $locked->fresh()->loadCount('editRequests');
+        });
+
+        if (! $granted) {
+            return response()->json([
+                'error' => 'This listing already has the maximum of ' . self::MAX_EXTRA_GRANTED
+                    . ' extra edit requests granted.',
+            ], 422);
+        }
+
+        $remaining = $granted->edit_requests_remaining;
+
+        return response()->json([
+            'message' => "Granted {$count} extra edit request" . ($count === 1 ? '' : 's')
+                . ". This listing now has {$remaining} remaining.",
+            'edit_requests_remaining' => $remaining,
+            'edit_requests_limit' => $granted->edit_requests_limit,
         ]);
     }
 }

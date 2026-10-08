@@ -38,6 +38,7 @@ class PropertySubmission extends Model
         'longitude' => 'float',
         'reviewed_at' => 'datetime',
         'featured_at' => 'datetime',
+        'extra_edit_requests' => 'integer',
     ];
 
     protected $appends = ['photo_url', 'photo_url_2', 'photo_url_3', 'photo_urls'];
@@ -104,11 +105,23 @@ class PropertySubmission extends Model
     // PropertyEditRequestController.
     public function getEditRequestsRemainingAttribute(): int
     {
-        $used = $this->relationLoaded('editRequests')
-            ? $this->editRequests->count()
-            : $this->editRequests()->count();
+        if ($this->relationLoaded('editRequests')) {
+            $used = $this->editRequests->count();
+        } elseif (array_key_exists('edit_requests_count', $this->attributes)) {
+            // Set by withCount('editRequests') -- e.g. the admin listing.
+            $used = (int) $this->attributes['edit_requests_count'];
+        } else {
+            $used = $this->editRequests()->count();
+        }
 
-        return max(0, PropertyEditRequest::MAX_PER_SUBMISSION - $used);
+        return max(0, $this->edit_requests_limit - $used);
+    }
+
+    // Total slots this listing may use: the standard cap plus whatever
+    // extra slots an admin has granted for it.
+    public function getEditRequestsLimitAttribute(): int
+    {
+        return PropertyEditRequest::MAX_PER_SUBMISSION + (int) $this->extra_edit_requests;
     }
 
     public function hasPendingEditRequest(): bool

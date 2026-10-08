@@ -29,6 +29,7 @@ class PropertySubmissionController extends Controller
             // getEditRequestsRemainingAttribute() in the model for why
             // it's not auto-appended everywhere.
             $submission->edit_requests_remaining = $submission->edit_requests_remaining;
+            $submission->edit_requests_limit = $submission->edit_requests_limit;
             $submission->has_pending_edit_request = $submission->hasPendingEditRequest();
         });
 
@@ -251,7 +252,18 @@ class PropertySubmissionController extends Controller
             $query->where('listing_type', $request->string('listing_type'));
         }
 
-        return response()->json($query->paginate(20));
+        // withCount keeps the per-row slots figure query-free (see
+        // getEditRequestsRemainingAttribute) so the admin can see, and top
+        // up, each listing's edit-request allowance.
+        $page = $query->withCount('editRequests')->paginate(20);
+        $page->through(function (PropertySubmission $submission) {
+            $submission->edit_requests_remaining = $submission->edit_requests_remaining;
+            $submission->edit_requests_limit = $submission->edit_requests_limit;
+
+            return $submission;
+        });
+
+        return response()->json($page);
     }
 
     // Admin only — view a single submission.

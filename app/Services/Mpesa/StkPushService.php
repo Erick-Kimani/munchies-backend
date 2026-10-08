@@ -27,6 +27,8 @@ class StkPushService
     private string $shortcode;
     private string $passkey;
     private string $callbackUrl;
+    private string $transactionType;
+    private string $partyB;
 
     public function __construct(MpesaClient $client)
     {
@@ -34,6 +36,16 @@ class StkPushService
         $this->shortcode = (string) config('services.mpesa.shortcode');
         $this->passkey = (string) config('services.mpesa.passkey');
         $this->callbackUrl = (string) config('services.mpesa.callback_url');
+        $this->transactionType = (string) config('services.mpesa.transaction_type', 'CustomerPayBillOnline');
+        // Paybill: PartyB is the paybill itself. Buy Goods Till: BusinessShortCode
+        // is the store/head-office number and PartyB is the till number.
+        $this->partyB = (string) (config('services.mpesa.party_b') ?: $this->shortcode);
+
+        if (!in_array($this->transactionType, ['CustomerPayBillOnline', 'CustomerBuyGoodsOnline'], true)) {
+            throw new InvalidArgumentException(
+                'MPESA_TRANSACTION_TYPE must be CustomerPayBillOnline or CustomerBuyGoodsOnline.'
+            );
+        }
 
         if ($this->shortcode === '' || $this->passkey === '' || $this->callbackUrl === '') {
             throw new InvalidArgumentException(
@@ -96,12 +108,12 @@ class StkPushService
             'BusinessShortCode' => $this->shortcode,
             'Password' => $this->password($timestamp),
             'Timestamp' => $timestamp,
-            // Paybill, not Till — CustomerBuyGoodsOnline is for till
-            // numbers and would post under a different account model.
-            'TransactionType' => 'CustomerPayBillOnline',
+            // CustomerPayBillOnline for a Paybill, CustomerBuyGoodsOnline
+            // for a Buy Goods Till — set via MPESA_TRANSACTION_TYPE.
+            'TransactionType' => $this->transactionType,
             'Amount' => $amount,
             'PartyA' => $phone,
-            'PartyB' => $this->shortcode,
+            'PartyB' => $this->partyB,
             'PhoneNumber' => $phone,
             'CallBackURL' => $this->callbackUrl,
             'AccountReference' => substr($accountReference, 0, 12),

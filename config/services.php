@@ -65,6 +65,14 @@ return [
         // Daraja portal / sandbox simulator.
         'passkey' => env('MPESA_PASSKEY'),
 
+        // 'CustomerPayBillOnline' (Paybill, default) or
+        // 'CustomerBuyGoodsOnline' (Buy Goods Till).
+        'transaction_type' => env('MPESA_TRANSACTION_TYPE', 'CustomerPayBillOnline'),
+
+        // Receiving number (PartyB). Leave empty to use the shortcode.
+        // For a Till: shortcode = store/head-office number, party_b = till number.
+        'party_b' => env('MPESA_PARTY_B'),
+
         // Must be a public HTTPS URL Safaricom's servers can reach —
         // localhost will never work. Use an ngrok (or similar) tunnel
         // in development; see README.

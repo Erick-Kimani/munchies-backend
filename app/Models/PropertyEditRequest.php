@@ -12,6 +12,15 @@ class PropertyEditRequest extends Model
     // PropertyEditRequestController::store for where this is enforced.
     public const MAX_PER_SUBMISSION = 2;
 
+    // Every column a request can propose a change to. The three photo_*
+    // columns hold paths to the proposed replacement images.
+    public const EDITABLE_FIELDS = [
+        'type', 'description', 'latitude', 'longitude', 'phone',
+        'photo_path', 'photo_path_2', 'photo_path_3',
+    ];
+
+    public const PHOTO_COLUMNS = ['photo_path', 'photo_path_2', 'photo_path_3'];
+
     public const STATUS_PENDING = 'pending';
     public const STATUS_APPROVED = 'approved';
     public const STATUS_REJECTED = 'rejected';
@@ -24,8 +33,28 @@ class PropertyEditRequest extends Model
         'latitude',
         'longitude',
         'phone',
+        'photo_path',
+        'photo_path_2',
+        'photo_path_3',
         'seller_note',
     ];
+
+    protected $appends = ['photo_url', 'photo_url_2', 'photo_url_3'];
+
+    public function getPhotoUrlAttribute()
+    {
+        return $this->photo_path ? asset('storage/' . $this->photo_path) : null;
+    }
+
+    public function getPhotoUrl2Attribute()
+    {
+        return $this->photo_path_2 ? asset('storage/' . $this->photo_path_2) : null;
+    }
+
+    public function getPhotoUrl3Attribute()
+    {
+        return $this->photo_path_3 ? asset('storage/' . $this->photo_path_3) : null;
+    }
 
     // status, admin_note, reviewed_by, reviewed_at are deliberately left
     // out of $fillable -- identical reasoning to PropertySubmission: none
@@ -60,7 +89,7 @@ class PropertyEditRequest extends Model
     // changes: Type, Description" without re-deriving it client-side.
     public function changedFields(): array
     {
-        return collect(['type', 'description', 'latitude', 'longitude', 'phone'])
+        return collect(self::EDITABLE_FIELDS)
             ->filter(fn ($field) => ! is_null($this->{$field}))
             ->values()
             ->all();
