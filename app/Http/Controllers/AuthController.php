@@ -29,12 +29,6 @@ class AuthController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
-            // Both required, not just "accepted" — a boolean alone can't
-            // prove *which* wording someone agreed to once the terms
-            // change. See TermsAcceptance::isCurrentVersion(): a stale
-            // frontend build sending an old version string is refused
-            // below the same as an outright missing one, rather than
-            // silently accepted as consent to text nobody currently sees.
             'accepted_terms' => 'required|accepted',
             'accepted_terms_version' => 'required|string|max:40',
         ]);
