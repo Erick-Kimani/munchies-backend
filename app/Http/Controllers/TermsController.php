@@ -91,7 +91,8 @@ class TermsController extends Controller
 
         return response()->json([
             'message' => 'Thanks — recorded.',
-            'acceptance' => $acceptance,
+            // Only what the client needs — not the stored IP address / user agent.
+            'acceptance' => $acceptance->only(['audience', 'version', 'accepted_at']),
         ], 201);
     }
 }

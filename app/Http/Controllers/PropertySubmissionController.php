@@ -11,6 +11,30 @@ use Illuminate\Support\Facades\DB;
 
 class PropertySubmissionController extends Controller
 {
+    // Internal bookkeeping columns that no public visitor ever needs: who
+    // owns the listing, which payment funded it, who reviewed it and the
+    // admin's private review note.
+    private const PUBLIC_HIDDEN_FIELDS = [
+        'user_id',
+        'payment_id',
+        'reviewed_by',
+        'reviewed_at',
+        'review_note',
+        'extra_edit_requests',
+    ];
+
+    // Internal ids a seller doesn't need back on their own submissions.
+    // (review_note is deliberately kept — it's the reason shown to the
+    // seller when a listing is rejected.)
+    private const SELLER_HIDDEN_FIELDS = [
+        'payment_id',
+        'reviewed_by',
+        'extra_edit_requests',
+        'photo_path',
+        'photo_path_2',
+        'photo_path_3',
+    ];
+
     // Requires auth:sanctum — a seller's own listings, with their edit
     // request history and slots-remaining attached. This is the one place
     // a non-admin can see property_submissions rows at all (index/show
@@ -24,6 +48,15 @@ class PropertySubmissionController extends Controller
             ->get();
 
         $submissions->each(function (PropertySubmission $submission) {
+            $submission->makeHidden(self::SELLER_HIDDEN_FIELDS);
+
+            $submission->editRequests->each(fn ($request) => $request->makeHidden([
+                'requested_by',
+                'reviewed_by',
+                'photo_path', 
+                'photo_path_2', 
+                'photo_path_3',
+                ]));
             // Manually attaching these (rather than relying on $appends)
             // is deliberate -- see the comment on
             // getEditRequestsRemainingAttribute() in the model for why
@@ -169,7 +202,7 @@ class PropertySubmissionController extends Controller
 
         return response()->json([
             'message' => 'Submission received. Our team will review it shortly.',
-            'submission' => $submission,
+            'submission' => $submission->makeHidden(self::SELLER_HIDDEN_FIELDS),
             'user' => $user->fresh(),
         ], 201);
     }
@@ -209,7 +242,7 @@ class PropertySubmissionController extends Controller
         $isAuthenticated = (bool) $request->user('sanctum');
 
         $results = $query->get()->map(function (PropertySubmission $submission) use ($isAuthenticated) {
-            $data = $submission->toArray();
+            $data = $submission->makeHidden(self::PUBLIC_HIDDEN_FIELDS)->toArray();
 
             if (!$isAuthenticated) {
                 $data['phone'] = self::maskPhone($submission->phone);

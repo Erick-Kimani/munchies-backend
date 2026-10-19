@@ -10,6 +10,7 @@ class Role extends Model
         'name',
         'slug',
     ];
+    protected $hidden = ['created_at', 'updated_at'];
 
     // These three IDs are hardcoded elsewhere in the app (User::isAdmin/
     // isSeller/isUser, PropertySubmissionController's seller-promotion

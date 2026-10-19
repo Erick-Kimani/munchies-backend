@@ -58,12 +58,18 @@ class MpesaPaymentController extends Controller
                 transactionDesc: 'Tawi Properties listing fee',
             );
         } catch (MpesaException $e) {
+            // The real reason (Daraja wording, auth/config problems) is kept
+            // in the logs only — the client gets a fixed, neutral message.
+            report($e);
+
             $payment->update([
                 'status' => Payment::STATUS_FAILED,
-                'result_desc' => $e->getMessage(),
+                'result_desc' => 'Payment request could not be started.',
             ]);
 
-            return response()->json(['message' => $e->getMessage()], 502);
+            return response()->json([
+                'message' => 'We could not start the payment. Please try again shortly.',
+            ], 502);
         }
 
         $payment->update([
@@ -188,9 +194,18 @@ class MpesaPaymentController extends Controller
             }
         }
 
+        // Friendly fixed wording instead of Daraja's raw ResultDesc (which is
+        // still stored on the payment row for admins/debugging).
+        $friendly = [
+            Payment::STATUS_PENDING   => 'Waiting for payment confirmation.',
+            Payment::STATUS_COMPLETED => 'Payment received.',
+            Payment::STATUS_CANCELLED => 'The payment was cancelled.',
+            Payment::STATUS_FAILED    => 'The payment was not completed. Please try again.',
+        ];
+
         return response()->json([
             'status' => $payment->status,
-            'result_desc' => $payment->result_desc,
+            'result_desc' => $friendly[$payment->status] ?? 'Payment status unavailable.',
             'mpesa_receipt_number' => $payment->mpesa_receipt_number,
         ]);
     }

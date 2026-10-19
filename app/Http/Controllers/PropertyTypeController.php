@@ -30,9 +30,9 @@ class PropertyTypeController extends Controller
             return response()->json($propertyType);
 
         } catch (\Exception $error) {
+            report($error); // full detail goes to storage/logs, never to the client
             return response()->json([
                 "Error" => "Failed to create a property type.",
-                "Message" => $error->getMessage()
             ], 500);
         }
     }
@@ -45,9 +45,9 @@ class PropertyTypeController extends Controller
             return response()->json($propertyTypes);
 
         } catch (\Exception $error) {
+            report($error); // full detail goes to storage/logs, never to the client
             return response()->json([
                 "Error" => "Failed to fetch property types.",
-                "Message" => $error->getMessage()
             ], 500);
         }
     }
@@ -63,9 +63,9 @@ class PropertyTypeController extends Controller
             return response()->json($propertyTypes);
 
         } catch (\Exception $error) {
+            report($error); // full detail goes to storage/logs, never to the client
             return response()->json([
                 "Error" => "Failed to fetch property types.",
-                "Message" => $error->getMessage()
             ], 500);
         }
     }
@@ -82,9 +82,9 @@ class PropertyTypeController extends Controller
                 "Error" => "Property type not found.",
             ], 404);
         } catch (\Exception $error) {
+            report($error); // full detail goes to storage/logs, never to the client
             return response()->json([
                 "Error" => "Failed to fetch property type.",
-                "Message" => $error->getMessage()
             ], 500);
         }
     }
@@ -116,10 +116,12 @@ class PropertyTypeController extends Controller
             return response()->json([
                 "Error" => "Property type not found.",
             ], 404);
+        } catch (\Illuminate\Validation\ValidationException $error) {
+            throw $error; // a normal 422 with field errors, not a server error
         } catch (\Exception $error) {
+            report($error); // full detail goes to storage/logs, never to the client
             return response()->json([
                 "Error" => "Failed to update property type.",
-                "Message" => $error->getMessage()
             ], 500);
         }
     }
@@ -138,9 +140,9 @@ class PropertyTypeController extends Controller
                 "Error" => "Property type not found.",
             ], 404);
         } catch (\Exception $error) {
+            report($error); // full detail goes to storage/logs, never to the client
             return response()->json([
                 "Error" => "Failed to delete property type.",
-                "Message" => $error->getMessage()
             ], 500);
         }
     }

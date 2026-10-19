@@ -50,7 +50,8 @@ class PropertyEditRequestController extends Controller
         // specific listing, same pattern as every other "...mine"-style
         // check in this app (ContactMessageController::mine, etc).
         if ((int) $submission->user_id !== (int) $request->user()->id) {
-            return response()->json(['error' => 'You can only request edits to your own listings.'], 403);
+            // 404, not 403: a 403 would confirm this id exists and belongs to someone else.
+            return response()->json(['error' => 'Property submission not found.'], 404);
         }
 
         if ($submission->status === 'rejected') {
@@ -127,6 +128,16 @@ class PropertyEditRequestController extends Controller
             'photo_path_3' => $photoPaths['photo_path_3'] ?? null,
             'seller_note' => $validated['seller_note'],
         ]);
+
+        $editRequest->makeHidden([
+            'requested_by',
+            'reviewed_by',
+            'photo_path',
+            'photo_path_2',
+            'photo_path_3',
+            'updated_at',
+        ]);
+
 
         return response()->json([
             'message' => 'Edit request submitted. An admin will review it shortly.',

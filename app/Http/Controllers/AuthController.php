@@ -85,9 +85,11 @@ class AuthController extends Controller
             ], 201);
 
         } catch (\Exception $exception) {
+            // Full detail (SQL errors etc.) goes to storage/logs only.
+            report($exception);
+
             return response()->json([
-                'error' => 'Registration failed.',
-                'message' => $exception->getMessage(),
+                'error' => 'Registration failed. Please try again.',
             ], 500);
         }
     }
@@ -179,7 +181,7 @@ class AuthController extends Controller
             || $tokenInfoResponse->json('aud') !== $expectedClientId
         ) {
             return response()->json([
-                'error' => 'Google token was not issued for this application.',
+                'error' => 'Invalid or expired Google token.',
             ], 401);
         }
 
@@ -381,23 +383,27 @@ class AuthController extends Controller
             ]);
         }
 
-        $resetCode = (string) random_int(100000, 999999);
+        // The slow part (bcrypt + sending mail) runs AFTER the response, so an
+        // existing and a non-existing email answer in the same time.
+        dispatch(function () use ($user) {
+            $resetCode = (string) random_int(100000, 999999);
 
-        \DB::table('password_reset_tokens')->updateOrInsert(
-            ['email' => $user->email],
-            [
-                'token' => Hash::make($resetCode),
-                'attempts' => 0,
-                'created_at' => now(),
-            ]
-        );
+            \DB::table('password_reset_tokens')->updateOrInsert(
+                ['email' => $user->email],
+                [
+                    'token' => Hash::make($resetCode),
+                    'attempts' => 0,
+                    'created_at' => now(),
+                ]
+            );
 
-                \Mail::send('emails.password-reset', [
-            'user' => $user,
-            'code' => $resetCode,
-        ], function ($message) use ($user) {
-            $message->to($user->email)->subject('Reset your Tawi Properties password');
-        });
+            \Mail::send('emails.password-reset', [
+                'user' => $user,
+                'code' => $resetCode,
+            ], function ($message) use ($user) {
+                $message->to($user->email)->subject('Reset your Tawi Properties password');
+            });
+        })->afterResponse();
 
         return response()->json([
             'message' => 'If that email is registered, a reset code has been sent.',
@@ -434,7 +440,7 @@ class AuthController extends Controller
             \DB::table('password_reset_tokens')->where('email', $validated['email'])->delete();
 
             return response()->json([
-                'error' => 'Too many attempts. Please request a new reset code.',
+                'error' => 'Invalid or expired reset code.',
             ], 422);
         }
 
@@ -446,7 +452,7 @@ class AuthController extends Controller
             \DB::table('password_reset_tokens')->where('email', $validated['email'])->delete();
 
             return response()->json([
-                'error' => 'Reset code has expired. Please request a new one.',
+                'error' => 'Invalid or expired reset code.',
             ], 422);
         }
 

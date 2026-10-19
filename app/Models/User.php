@@ -16,18 +16,21 @@ class User extends Authenticatable
         'email',
         'password',
         'role_id',
-        'google_id',
         'avatar',
         'password_set_at',
         'password_set_override',
+        'google_id',
     ];
 
     protected $hidden = [
         'password',
         'remember_token',
-        // Internal admin-override flag — the frontend only needs the
-        // derived can_set_password boolean (see below), not this raw flag.
         'password_set_override',
+        'google_id',
+        'password_set_at',
+        'email_verified_at',
+        'created_at',
+        'updated_at',
     ];
 
     protected $casts = [
@@ -42,6 +45,7 @@ class User extends Authenticatable
     // know about password_set_at/password_set_override individually.
     protected $appends = [
         'can_set_password',
+        'is_google_account',
     ];
 
     /**
@@ -77,6 +81,11 @@ class User extends Authenticatable
     public function isUser()
     {
         return $this->role->id === 3;
+    }
+
+    public function getIsGoogleAccountAttribute(): bool
+    {
+        return !empty($this->google_id);
     }
 
     public function abilities()

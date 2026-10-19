@@ -36,10 +36,16 @@ class ContactMessageController extends Controller
     // for that reason.
     public function mine(Request $request)
     {
-        $messages = ContactMessage::with('replies.user:id,name,role_id')
+        $messages = ContactMessage::with('replies.user')
             ->where('user_id', $request->user()->id)
             ->latest()
             ->get();
+
+        $messages->each(function ($message) {
+        $message->makeHidden(['user_id', 'handled_by', 'handled_at', 'updated_at']);
+        $message->replies->each(fn ($reply) => $reply->makeHidden(['user_id', 'updated_at']));
+    });
+
 
         return response()->json($messages);
     }

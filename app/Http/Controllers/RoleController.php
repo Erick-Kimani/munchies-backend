@@ -26,9 +26,9 @@ class RoleController extends Controller
             return response()->json($role);
 
         } catch (\Exception $error) {
+            report($error); // full detail goes to storage/logs, never to the client
             return response()->json([
                 "Error" => "Failed to create a role.",
-                "Message" => $error->getMessage()
             ], 500);
         }
     }
@@ -41,9 +41,9 @@ class RoleController extends Controller
             return response()->json($roles);
 
         } catch (\Exception $error) {
+            report($error); // full detail goes to storage/logs, never to the client
             return response()->json([
                 "Error" => "Failed to fetch roles.",
-                "Message" => $error->getMessage()
             ], 500);
         }
     }
@@ -60,9 +60,9 @@ class RoleController extends Controller
                 "Error" => "Role not found.",
             ], 404);
         } catch (\Exception $error) {
+            report($error); // full detail goes to storage/logs, never to the client
             return response()->json([
                 "Error" => "Failed to fetch role.",
-                "Message" => $error->getMessage()
             ], 500);
         }
     }
@@ -115,10 +115,12 @@ class RoleController extends Controller
             return response()->json([
                 "Error" => "Role not found.",
             ], 404);
+        } catch (\Illuminate\Validation\ValidationException $error) {
+            throw $error; // a normal 422 with field errors, not a server error
         } catch (\Exception $error) {
+            report($error); // full detail goes to storage/logs, never to the client
             return response()->json([
                 "Error" => "Failed to update role.",
-                "Message" => $error->getMessage()
             ], 500);
         }
     }
@@ -148,9 +150,9 @@ class RoleController extends Controller
                 "Error" => "Role not found.",
             ], 404);
         } catch (\Exception $error) {
+            report($error); // full detail goes to storage/logs, never to the client
             return response()->json([
                 "Error" => "Failed to delete role.",
-                "Message" => $error->getMessage()
             ], 500);
         }
     }
