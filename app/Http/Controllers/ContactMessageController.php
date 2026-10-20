@@ -1,7 +1,8 @@
 <?php
 
 namespace App\Http\Controllers;
-
+use App\Models\User;
+use App\Models\Role;
 use App\Models\ContactMessage;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
@@ -49,7 +50,73 @@ class ContactMessageController extends Controller
 
         return response()->json($messages);
     }
+        // Admin only — the "pick a user" list for starting a conversation.
+    // Optional ?search= (name or email) and ?role=seller|user filters.
+    // Admins are excluded; capped at 50 so the picker stays fast.
+    public function recipients(Request $request)
+    {
+        $query = User::query()
+            ->select('id', 'name', 'email', 'role_id')
+            ->with('role:id,name,slug')
+            ->where('role_id', '!=', Role::ADMIN)
+            ->orderBy('name');
 
+        if ($request->filled('role')) {
+            $roleId = $request->string('role')->toString() === 'seller'
+                ? Role::SELLER
+                : Role::USER;
+            $query->where('role_id', $roleId);
+        }
+
+        if ($request->filled('search')) {
+            $term = '%' . $request->string('search')->trim() . '%';
+            $query->where(function ($q) use ($term) {
+                $q->where('name', 'like', $term)->orWhere('email', 'like', $term);
+            });
+        }
+
+        return response()->json($query->limit(50)->get());
+    }
+
+    // Admin only — opens a NEW thread addressed to a chosen user/seller.
+    // The user then sees it in Contact.vue's "Your messages" (it's scoped
+    // by user_id, same as threads they started), and the admin keeps
+    // replying through the existing reply() action.
+    public function start(Request $request)
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'message' => 'required|string|min:2|max:3000',
+        ]);
+
+        $recipient = User::findOrFail($validated['user_id']);
+
+        if ($recipient->role_id === Role::ADMIN) {
+            return response()->json([
+                'error' => 'You cannot start a conversation with another admin.',
+            ], 422);
+        }
+
+        // forceFill: status/handled_by/initiated_by_admin are deliberately
+        // not mass-assignable (see ContactMessage's note).
+        $thread = new ContactMessage();
+        $thread->forceFill([
+            'user_id' => $recipient->id,
+            'message' => $validated['message'],
+            'initiated_by_admin' => true,
+            'status' => 'replied',
+            'handled_by' => $request->user()->id,
+            'handled_at' => now(),
+        ])->save();
+
+        return response()->json([
+            'message' => 'Message sent.',
+            'contact_message' => $thread->load([
+                'sender:id,name,email,role_id',
+                'replies.user:id,name,role_id',
+            ]),
+        ], 201);
+    }
     // Admin only — the single inbox every message lands in.
     public function index(Request $request)
     {

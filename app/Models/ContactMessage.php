@@ -20,6 +20,7 @@ class ContactMessage extends Model
 
     protected $casts = [
         'handled_at' => 'datetime',
+        'initiated_by_admin' => 'boolean',
     ];
 
     public function sender()

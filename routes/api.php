@@ -146,6 +146,9 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\AdminOnly::class])->grou
     // Tops up one listing's edit-request allowance.
     Route::post('property-submissions/{id}/grant-edit-requests', [PropertyEditRequestController::class, 'grantExtra']);
 
+
+    Route::get('contact-messages/recipients', [ContactMessageController::class, 'recipients']);
+    Route::post('contact-messages/start', [ContactMessageController::class, 'start']);
     Route::get('contact-messages', [ContactMessageController::class, 'index']);
     Route::get('contact-messages/{id}', [ContactMessageController::class, 'show']);
     Route::put('contact-messages/{id}/read', [ContactMessageController::class, 'markRead']);
